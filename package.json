@@ -1,0 +1,8 @@
+{
+  "name": "hud-plugin",
+  "version": "0.1.0",
+  "description": "Terminal HUD for Claude Code — real-time token, cost, git monitor",
+  "type": "module",
+  "keywords": ["claude", "claude-code", "hud", "token", "git", "dashboard", "plugin"],
+  "license": "MIT"
+}

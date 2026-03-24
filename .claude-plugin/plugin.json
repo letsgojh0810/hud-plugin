@@ -1,0 +1,6 @@
+{
+  "name": "hud-plugin",
+  "version": "0.1.0",
+  "description": "Terminal HUD for Claude Code — real-time token, cost, git, and project monitor",
+  "skills": "./skills/"
+}

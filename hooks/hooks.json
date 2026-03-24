@@ -1,0 +1,29 @@
+{
+  "description": "HUD hooks for Claude Code — token tracking, git status, session summary",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/stop-hud.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
