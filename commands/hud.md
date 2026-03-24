@@ -3,17 +3,18 @@ name: hud
 description: Show full HUD dashboard (tokens, cost, git)
 ---
 
-Execute the HUD dashboard script and display the results.
+Execute the full HUD dashboard script and display the output directly in a code block.
 
 Run:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/stop-hud.mjs"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/full-hud.mjs"
 ```
 
-Parse the JSON output and display the `message` field in a code block.
+Display the full stdout output as-is in a code block. Do not summarize or modify it.
 
-Show:
-1. Token usage with progress bar
-2. Cost breakdown (input / output / cache read / cache write / total)
-3. Git branch and changed files
-4. Recent commits
+The output includes:
+1. Context window progress bar + percentage
+2. Token breakdown (input / output / cache-read / cache-write) with bars and costs
+3. Total session cost
+4. Git branch, changed files (MOD/ADD/DEL)
+5. Recent commits with hash, message, and time

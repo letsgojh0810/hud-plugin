@@ -10,7 +10,7 @@
     {
       "name": "hud-plugin",
       "description": "Always-on HUD showing token usage, session cost, and git status inside Claude Code. Hooks into SessionStart and Stop for automatic display.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "letsgojh0810"
       },
