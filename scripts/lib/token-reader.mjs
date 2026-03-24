@@ -44,17 +44,23 @@ function findLatestSession() {
 
   const projects = fs.readdirSync(projectsDir);
   for (const proj of projects) {
-    const sessionsDir = path.join(projectsDir, proj, 'sessions');
-    if (!fs.existsSync(sessionsDir)) continue;
+    const projDir = path.join(projectsDir, proj);
 
-    const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.jsonl'));
+    // Claude Code stores sessions as UUID.jsonl directly in the project dir
+    let files = [];
+    try {
+      files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl') && !f.includes('/'));
+    } catch { continue; }
+
     for (const file of files) {
-      const fullPath = path.join(sessionsDir, file);
-      const stat = fs.statSync(fullPath);
-      if (stat.mtimeMs > latestMtime) {
-        latestMtime = stat.mtimeMs;
-        latest = fullPath;
-      }
+      const fullPath = path.join(projDir, file);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.mtimeMs > latestMtime) {
+          latestMtime = stat.mtimeMs;
+          latest = fullPath;
+        }
+      } catch {}
     }
   }
   return latest;
@@ -63,42 +69,67 @@ function findLatestSession() {
 export function readTokenUsage() {
   const sessionFile = findLatestSession();
   if (!sessionFile) {
-    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, contextWindow: 200000, model: 'unknown', cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    return empty();
   }
 
-  let inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0;
   let model = 'claude-sonnet-4';
+  // For cost: sum all turns' output + input (billed per turn)
+  let totalOutputTokens = 0;
+  let totalInputTokens = 0;
+  let totalCacheReadTokens = 0;
+  let totalCacheWriteTokens = 0;
+  // For context window: use the LAST turn's snapshot (what's in context right now)
+  let lastUsage = null;
 
   const lines = fs.readFileSync(sessionFile, 'utf8').split('\n').filter(Boolean);
   for (const line of lines) {
     try {
       const obj = JSON.parse(line);
-      // model detection
-      if (obj.model) model = obj.model;
       if (obj.message?.model) model = obj.message.model;
 
-      // usage from assistant messages
-      const usage = obj.usage || obj.message?.usage;
-      if (usage) {
-        inputTokens      += usage.input_tokens        || 0;
-        outputTokens     += usage.output_tokens       || 0;
-        cacheReadTokens  += usage.cache_read_input_tokens  || 0;
-        cacheWriteTokens += usage.cache_creation_input_tokens || 0;
-      }
+      const usage = obj.message?.usage;
+      if (!usage) continue;
+
+      // Accumulate output tokens (main cost driver, each turn is new output)
+      totalOutputTokens     += usage.output_tokens || 0;
+      totalInputTokens      += usage.input_tokens  || 0;
+      totalCacheReadTokens  += usage.cache_read_input_tokens || 0;
+      totalCacheWriteTokens += usage.cache_creation_input_tokens || 0;
+      lastUsage = usage;
     } catch {}
   }
 
-  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+  if (!lastUsage) return empty();
+
+  // Context window = what's currently loaded (last turn's input side)
+  const ctxInput    = lastUsage.input_tokens || 0;
+  const ctxCacheR   = lastUsage.cache_read_input_tokens || 0;
+  const ctxCacheW   = lastUsage.cache_creation_input_tokens || 0;
+  const contextUsed = ctxInput + ctxCacheR + ctxCacheW;
+
   const contextWindow = getContextWindow(model);
   const pricing = getPricing(model);
   const M = 1_000_000;
   const cost = {
-    input:      (inputTokens      / M) * pricing.input,
-    output:     (outputTokens     / M) * pricing.output,
-    cacheRead:  (cacheReadTokens  / M) * pricing.cacheRead,
-    cacheWrite: (cacheWriteTokens / M) * pricing.cacheWrite,
+    input:      (totalInputTokens      / M) * pricing.input,
+    output:     (totalOutputTokens     / M) * pricing.output,
+    cacheRead:  (totalCacheReadTokens  / M) * pricing.cacheRead,
+    cacheWrite: (totalCacheWriteTokens / M) * pricing.cacheWrite,
   };
   cost.total = cost.input + cost.output + cost.cacheRead + cost.cacheWrite;
 
-  return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, contextWindow, model, cost };
+  return {
+    inputTokens:      totalInputTokens,
+    outputTokens:     totalOutputTokens,
+    cacheReadTokens:  totalCacheReadTokens,
+    cacheWriteTokens: totalCacheWriteTokens,
+    totalTokens:      contextUsed,   // context window usage = current ctx size
+    contextWindow,
+    model,
+    cost,
+  };
+}
+
+function empty() {
+  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, contextWindow: 200000, model: 'unknown', cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 }
