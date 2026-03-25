@@ -66,6 +66,83 @@ function findLatestSession() {
   return latest;
 }
 
+/** Collect all JSONL lines across all sessions with their timestamps */
+function readAllLines() {
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  if (!fs.existsSync(projectsDir)) return [];
+  const result = [];
+  for (const proj of fs.readdirSync(projectsDir)) {
+    const projDir = path.join(projectsDir, proj);
+    let files = [];
+    try { files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
+    for (const file of files) {
+      const fullPath = path.join(projDir, file);
+      const fileMtime = fs.statSync(fullPath).mtimeMs;
+      try {
+        const lines = fs.readFileSync(fullPath, 'utf8').split('\n').filter(Boolean);
+        for (const line of lines) {
+          try {
+            const obj = JSON.parse(line);
+            if (!obj.message?.usage) continue;
+            const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : fileMtime;
+            result.push({ ts, usage: obj.message.usage, model: obj.message.model || 'claude-sonnet-4' });
+          } catch {}
+        }
+      } catch {}
+    }
+  }
+  return result;
+}
+
+export function readTokenHistory() {
+  const allLines = readAllLines();
+  const now = Date.now();
+  const h5  = now - 5  * 60 * 60 * 1000;
+  const wk  = now - 7  * 24 * 60 * 60 * 1000;
+  const h12 = now - 12 * 60 * 60 * 1000;
+
+  const empty = () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
+  const acc5h = empty(), accWk = empty();
+
+  // 12 hourly buckets (index 0 = oldest, 11 = most recent)
+  const buckets = Array(12).fill(0);
+
+  for (const { ts, usage, model } of allLines) {
+    const pricing = getPricing(model);
+    const M = 1_000_000;
+    const inp = usage.input_tokens || 0;
+    const out = usage.output_tokens || 0;
+    const cr  = usage.cache_read_input_tokens || 0;
+    const cw  = usage.cache_creation_input_tokens || 0;
+
+    const addTo = (acc) => {
+      acc.inputTokens      += inp;
+      acc.outputTokens     += out;
+      acc.cacheReadTokens  += cr;
+      acc.cacheWriteTokens += cw;
+      acc.cost.input      += (inp / M) * pricing.input;
+      acc.cost.output     += (out / M) * pricing.output;
+      acc.cost.cacheRead  += (cr  / M) * pricing.cacheRead;
+      acc.cost.cacheWrite += (cw  / M) * pricing.cacheWrite;
+    };
+
+    if (ts >= wk) { addTo(accWk); }
+    if (ts >= h5) { addTo(acc5h); }
+
+    if (ts >= h12) {
+      const hoursAgo = (now - ts) / (60 * 60 * 1000);
+      const idx = Math.min(11, Math.floor(12 - hoursAgo));
+      if (idx >= 0) buckets[idx] += out;
+    }
+  }
+
+  [acc5h, accWk].forEach(acc => {
+    acc.cost.total = acc.cost.input + acc.cost.output + acc.cost.cacheRead + acc.cost.cacheWrite;
+  });
+
+  return { last5h: acc5h, lastWeek: accWk, hourlyBuckets: buckets };
+}
+
 export function readTokenUsage() {
   const sessionFile = findLatestSession();
   if (!sessionFile) {

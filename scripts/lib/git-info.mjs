@@ -26,7 +26,7 @@ export function readGitInfo(cwd = process.cwd()) {
   const modified = [], added = [], deleted = [];
   for (const line of statusOut.split('\n').filter(Boolean)) {
     const st = line.slice(0, 2).trim();
-    const file = line.slice(3);
+    const file = line.slice(2).trimStart();
     if (st === 'M' || st === 'MM' || st === 'AM') modified.push(file);
     else if (st === 'A' || st === '??' ) added.push(file);
     else if (st === 'D') deleted.push(file);
@@ -41,6 +41,17 @@ export function readGitInfo(cwd = process.cwd()) {
     return { hash, msg, time };
   });
 
+  // diff stats: actual +/- line counts per file
+  const numstatOut = run('git diff --numstat HEAD 2>/dev/null', cwd);
+  const diffStats = {};
+  for (const line of numstatOut.split('\n').filter(Boolean)) {
+    const [addStr, delStr, ...fileParts] = line.split('\t');
+    const file = fileParts.join('\t');
+    const add = parseInt(addStr) || 0;
+    const del = parseInt(delStr) || 0;
+    if (file) diffStats[file] = { add, del };
+  }
+
   return {
     isRepo: true,
     branch,
@@ -50,6 +61,7 @@ export function readGitInfo(cwd = process.cwd()) {
     added,
     deleted,
     recentCommits,
+    diffStats,
     totalChanges: modified.length + added.length + deleted.length,
   };
 }
