@@ -1,8 +1,44 @@
 {
-  "name": "hud-plugin",
-  "version": "0.1.0",
-  "description": "Terminal HUD for Claude Code — real-time token, cost, git monitor",
+  "name": "claude-code-hud",
+  "version": "0.2.0",
+  "description": "Terminal HUD for Claude Code — real-time token usage, git status, project monitor",
   "type": "module",
-  "keywords": ["claude", "claude-code", "hud", "token", "git", "dashboard", "plugin"],
-  "license": "MIT"
+  "bin": {
+    "claude-hud": "./bin/start.mjs"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "hud",
+    "token",
+    "git",
+    "dashboard",
+    "tui",
+    "terminal"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/letsgojh0810/hud-plugin.git"
+  },
+  "scripts": {
+    "hud": "tsx tui/hud.tsx",
+    "start": "node bin/start.mjs"
+  },
+  "files": [
+    "bin",
+    "tui",
+    "scripts",
+    "commands",
+    "hooks",
+    "skills"
+  ],
+  "dependencies": {
+    "@types/react": "^19.2.14",
+    "chokidar": "^5.0.0",
+    "fast-glob": "^3.3.3",
+    "ink": "^6.8.0",
+    "react": "^19.2.4",
+    "tsx": "^4.21.0"
+  }
 }
