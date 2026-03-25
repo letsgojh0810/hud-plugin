@@ -3,7 +3,7 @@
  * HUD Live — Ink TUI
  * Run: npm run hud  (from hud-plugin root)
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { render, Box, Text, useStdout, useInput } from 'ink';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -59,12 +59,28 @@ function sparkline(buckets: number[]): string {
   return buckets.map(v => SPARK_CHARS[Math.round((v / max) * 8)]).join('');
 }
 
+// ── Directory tree types ────────────────────────────────────────────────────
+type DirNode = {
+  name: string;
+  path: string;
+  fileCount: number;    // direct files only
+  totalFiles: number;   // recursive total
+  children: DirNode[];
+  expanded: boolean;
+};
+
+type FlatNode = {
+  node: DirNode;
+  depth: number;
+};
+
 // ── Project scanner ────────────────────────────────────────────────────────
 type ProjectInfo = {
   totalFiles: number;
   byExt: Record<string, number>;
   packages: { name: string; version: string; depth: number }[];
   endpoints: Record<string, number>;
+  dirTree: DirNode;
 };
 
 async function scanProject(cwd: string): Promise<ProjectInfo> {
@@ -81,6 +97,32 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
     const ext = f.includes('.') ? '.' + f.split('.').pop()! : 'other';
     byExt[ext] = (byExt[ext] || 0) + 1;
   }
+
+  // Build directory tree
+  function buildTree(filePaths: string[]): DirNode {
+    const root: DirNode = { name: '.', path: '', fileCount: 0, totalFiles: 0, children: [], expanded: true };
+    for (const file of filePaths) {
+      const parts = file.split('/');
+      let cur = root;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const seg = parts[i];
+        let child = cur.children.find(c => c.name === seg);
+        if (!child) {
+          child = { name: seg, path: parts.slice(0, i + 1).join('/'), fileCount: 0, totalFiles: 0, children: [], expanded: false };
+          cur.children.push(child);
+        }
+        cur = child;
+      }
+      cur.fileCount++;
+    }
+    function calcTotal(n: DirNode): number {
+      n.totalFiles = n.fileCount + n.children.reduce((s, c) => s + calcTotal(c), 0);
+      return n.totalFiles;
+    }
+    calcTotal(root);
+    return root;
+  }
+  const dirTree = buildTree(files);
 
   // Packages from package.json files
   const pkgFiles: string[] = await fg('**/package.json', {
@@ -119,7 +161,21 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
     } catch {}
   }
 
-  return { totalFiles: files.length, byExt, packages, endpoints };
+  return { totalFiles: files.length, byExt, packages, endpoints, dirTree };
+}
+
+// ── flatten visible tree nodes ──────────────────────────────────────────────
+function flattenTree(node: DirNode, depth: number, expanded: Record<string, boolean>): FlatNode[] {
+  const result: FlatNode[] = [];
+  const sorted = [...node.children].sort((a, b) => b.totalFiles - a.totalFiles);
+  for (const child of sorted) {
+    result.push({ node: child, depth });
+    const isExp = expanded[child.path] ?? false;
+    if (isExp && child.children.length > 0) {
+      result.push(...flattenTree(child, depth + 1, expanded));
+    }
+  }
+  return result;
 }
 
 // ── UI Components ──────────────────────────────────────────────────────────
@@ -246,12 +302,29 @@ function TokensTab({ usage, history, rateLimits, termWidth, C }: any) {
 }
 
 // ── Tab 2: PROJECT ─────────────────────────────────────────────────────────
-function ProjectTab({ info, C, termWidth }: any) {
+function ProjectTab({ info, treeCursor, treeExpanded, termWidth, C }: any) {
   if (!info) return (
     <Box borderStyle="single" borderColor={C.border} paddingX={1}>
       <Text color={C.dimmer}>scanning project…</Text>
     </Box>
   );
+
+  // Flatten visible tree using treeExpanded from props (closure)
+  function flatNodes_inner(node: DirNode, depth: number): FlatNode[] {
+    const result: FlatNode[] = [];
+    const sorted = [...node.children].sort((a, b) => b.totalFiles - a.totalFiles);
+    for (const child of sorted) {
+      result.push({ node: child, depth });
+      const isExp = treeExpanded[child.path] ?? false;
+      if (isExp && child.children.length > 0) {
+        result.push(...flatNodes_inner(child, depth + 1));
+      }
+    }
+    return result;
+  }
+
+  const flatNodes = info.dirTree ? flatNodes_inner(info.dirTree, 0) : [];
+  const safeCursor = Math.min(treeCursor, Math.max(0, flatNodes.length - 1));
 
   const EXT_LABELS: Record<string, string> = {
     '.ts': 'TypeScript', '.tsx': 'TypeScript', '.js': 'JavaScript', '.jsx': 'JavaScript',
@@ -263,17 +336,13 @@ function ProjectTab({ info, C, termWidth }: any) {
     const label = EXT_LABELS[ext] || 'Other';
     extGroups[label] = (extGroups[label] || 0) + cnt;
   }
-  const sortedExts = Object.entries(extGroups).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const maxExtCount = Math.max(...sortedExts.map(([, n]) => n), 1);
-  const BAR_W = Math.max(8, Math.min(18, termWidth - 40));
-
-  const totalEndpoints = Object.values(info.endpoints as Record<string, number>).reduce((a, b) => a + b, 0);
-  const maxEp = Math.max(...Object.values(info.endpoints as Record<string, number>), 1);
+  const sortedExts = Object.entries(extGroups).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const totalEndpoints = Object.values(info.endpoints as Record<string, number>).reduce((a: number, b: number) => a + b, 0);
   const langs = sortedExts.slice(0, 2).map(([l]) => l).join(' / ');
 
   return (
     <Box flexDirection="column">
-      {/* Summary */}
+      {/* Summary bar */}
       <Box borderStyle="single" borderColor={C.border} paddingX={1}>
         <Text color={C.text} bold>{info.totalFiles} files</Text>
         <Text color={C.dim}>  │  </Text>
@@ -283,13 +352,39 @@ function ProjectTab({ info, C, termWidth }: any) {
         <Text color={C.dim}>  │  {langs}</Text>
       </Box>
 
+      {/* Directory tree */}
+      <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
+        <Text color={C.dim} bold>TREE  <Text color={C.dimmer}>[j/k] move  [enter/→←] expand</Text></Text>
+        {flatNodes.length === 0 && <Text color={C.dimmer}>  (empty)</Text>}
+        {flatNodes.map((fn, idx) => {
+          const isSelected = idx === safeCursor;
+          const isExp = treeExpanded[fn.node.path] ?? false;
+          const hasChildren = fn.node.children.length > 0;
+          const indent = '  '.repeat(fn.depth);
+          const expIcon = hasChildren ? (isExp ? '▼ ' : '▶ ') : '  ';
+          const nameColor = isSelected ? C.brand : fn.depth === 0 ? C.text : C.dim;
+          return (
+            <Box key={`${fn.node.path}__${idx}`}>
+              <Text color={C.dimmer}>{indent}</Text>
+              <Text color={isSelected ? C.brand : C.dimmer}>{expIcon}</Text>
+              <Text color={nameColor} bold={isSelected}>{fn.node.name}/</Text>
+              <Text color={C.dimmer}>  {fn.node.totalFiles}f</Text>
+              {isSelected && fn.node.fileCount > 0 && (
+                <Text color={C.dimmer}>  ({fn.node.fileCount} direct)</Text>
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+
       {/* Packages */}
-      <Section title="PACKAGES" C={C}>
-        {info.packages.slice(0, 10).map((p: any, i: number) => {
+      <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
+        <Text color={C.dim} bold>PACKAGES</Text>
+        {info.packages.slice(0, 12).map((p: any, i: number) => {
           const isRoot = p.depth === 0;
-          const isLast = i === Math.min(9, info.packages.length - 1) ||
-            (i + 1 < info.packages.length && info.packages[i + 1].depth === 0);
-          const prefix = isRoot ? '' : (isLast ? '└─ ' : '├─ ');
+          const nextIsRoot = i + 1 < info.packages.length && info.packages[i + 1].depth === 0;
+          const isLastInGroup = nextIsRoot || i === Math.min(11, info.packages.length - 1);
+          const prefix = isRoot ? '' : (isLastInGroup ? '└─ ' : '├─ ');
           return (
             <Box key={i}>
               <Text color={C.dimmer}>{isRoot ? '' : '   '}{prefix}</Text>
@@ -298,37 +393,7 @@ function ProjectTab({ info, C, termWidth }: any) {
             </Box>
           );
         })}
-      </Section>
-
-      {/* File breakdown */}
-      <Section title="FILES" C={C}>
-        {sortedExts.map(([label, count]) => (
-          <Box key={label}>
-            <Box width={14}><Text color={C.dim}>{label}</Text></Box>
-            <Box width={BAR_W}><Bar ratio={count / maxExtCount} width={BAR_W} color={C.brand} C={C} /></Box>
-            <Box width={5} justifyContent="flex-end"><Text color={C.text}> {count}</Text></Box>
-            <Box width={6} justifyContent="flex-end">
-              <Text color={C.dimmer}> {Math.round(count / info.totalFiles * 100)}%</Text>
-            </Box>
-          </Box>
-        ))}
-      </Section>
-
-      {/* Endpoints */}
-      <Section title="ENDPOINTS" C={C}>
-        {totalEndpoints === 0
-          ? <Text color={C.dimmer}>  no API endpoints detected</Text>
-          : Object.entries(info.endpoints as Record<string, number>)
-              .filter(([, n]) => n > 0)
-              .map(([method, count]) => (
-                <Box key={method}>
-                  <Box width={8}><Text color={C.yellow}>{method}</Text></Box>
-                  <Bar ratio={count / maxEp} width={BAR_W} color={C.yellow} C={C} />
-                  <Text color={C.text}>  {count}</Text>
-                </Box>
-              ))
-        }
-      </Section>
+      </Box>
     </Box>
   );
 }
@@ -433,6 +498,10 @@ function App() {
   const [project,    setProject]    = useState<ProjectInfo | null>(null);
   const [rateLimits, setRateLimits] = useState<any>(getUsageSync());
 
+  // Tree navigation state
+  const [treeCursor,   setTreeCursor]   = useState(0);
+  const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
+
   const refresh = useCallback(() => {
     setUsage(readTokenUsage());
     setHistory(readTokenHistory());
@@ -480,8 +549,50 @@ function App() {
     if (input === '2') { setTab(1); setScrollY(0); }
     if (input === '3') { setTab(2); setScrollY(0); }
     if (input === 'd') setDark(d => !d);
-    if (input === 'j' || key.downArrow) setScrollY(s => Math.min(s + 1, 20));
-    if (input === 'k' || key.upArrow)   setScrollY(s => Math.max(s - 1, 0));
+
+    // r = manual refresh
+    if (input === 'r') {
+      refresh();
+      setProject(null);
+      scanProject(cwd).then(p => { setProject(p); setTreeCursor(0); }).catch(() => {});
+    }
+
+    if (input === 'j' || key.downArrow) {
+      if (tab === 1) {
+        const flat = project?.dirTree ? flattenTree(project.dirTree, 0, treeExpanded) : [];
+        setTreeCursor(c => Math.min(c + 1, flat.length - 1));
+      } else {
+        setScrollY(s => Math.min(s + 1, 20));
+      }
+    }
+    if (input === 'k' || key.upArrow) {
+      if (tab === 1) setTreeCursor(c => Math.max(c - 1, 0));
+      else setScrollY(s => Math.max(s - 1, 0));
+    }
+
+    // Enter / Space — toggle expand in tree
+    if ((key.return || input === ' ') && tab === 1 && project?.dirTree) {
+      const flat = flattenTree(project.dirTree, 0, treeExpanded);
+      const selected = flat[treeCursor];
+      if (selected && selected.node.children.length > 0) {
+        const path = selected.node.path;
+        setTreeExpanded(prev => ({ ...prev, [path]: !(prev[path] ?? false) }));
+      }
+    }
+
+    // Arrow right = expand, left = collapse
+    if (key.rightArrow && tab === 1 && project?.dirTree) {
+      const flat = flattenTree(project.dirTree, 0, treeExpanded);
+      const selected = flat[treeCursor];
+      if (selected) setTreeExpanded(prev => ({ ...prev, [selected.node.path]: true }));
+    }
+    if (key.leftArrow && tab === 1) {
+      if (project?.dirTree) {
+        const flat = flattenTree(project.dirTree, 0, treeExpanded);
+        const selected = flat[treeCursor];
+        if (selected) setTreeExpanded(prev => ({ ...prev, [selected.node.path]: false }));
+      }
+    }
   });
 
   const TAB_NAMES = ['TOKENS', 'PROJECT', 'GIT'];
@@ -511,16 +622,20 @@ function App() {
       {/* ── Content (with scroll offset) ── */}
       <Box flexDirection="column" marginTop={-scrollY}>
         {tab === 0 && <TokensTab  usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} C={C} />}
-        {tab === 1 && <ProjectTab info={project} termWidth={termWidth} C={C} />}
+        {tab === 1 && <ProjectTab info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} termWidth={termWidth} C={C} />}
         {tab === 2 && <GitTab     git={git} termWidth={termWidth} C={C} />}
       </Box>
 
       {/* ── Footer ── */}
-      <Box justifyContent="center">
-        <Text color={C.green}>● </Text>
-        <Text color={C.dimmer}>live  </Text>
-        <Text color={C.dimmer}>[d] theme  [1/2/3] tabs  [j/k] scroll  [q] quit  </Text>
-        <Text color={C.dimmer}>refreshed {since}</Text>
+      <Box justifyContent="space-between" paddingX={1}>
+        <Box>
+          <Text color={C.green}>● </Text>
+          <Text color={C.dimmer}>[1/2/3] tabs  </Text>
+          <Text color={tab === 1 ? C.brand : C.dimmer}>[j/k] {tab === 1 ? 'tree' : 'scroll'}  </Text>
+          <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? '[enter/→←] expand  ' : ''}</Text>
+          <Text color={C.dimmer}>[r] refresh  [d] theme  [q] quit</Text>
+        </Box>
+        <Text color={C.dimmer}>↻ {since}</Text>
       </Box>
 
     </Box>
