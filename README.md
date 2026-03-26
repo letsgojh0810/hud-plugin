@@ -1,6 +1,12 @@
 # claude-code-hud
 
-A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser in a separate terminal window or tmux pane.
+[한국어](#한국어) | [English](#english)
+
+---
+
+## 한국어
+
+Claude Code 작업 중 터미널을 떠나지 않고 토큰 사용량, Git 상태, 프로젝트 파일을 실시간으로 확인할 수 있는 터미널 HUD입니다.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -21,67 +27,9 @@ A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+### 사용법
 
-## Features
-
-### 1 TOKENS tab
-- Context window usage gauge with percentage (OK / MID / WARN)
-- **5h and weekly usage** from Anthropic OAuth API — real percentages, not estimates
-- Input / output / cache-read / cache-write token breakdown with bars
-- Output tokens sparkline (▁▂▃▄▅▆▇█) over the last 12 hours
-- Model name and session uptime
-
-### 2 PROJECT tab — interactive file browser
-- Directory tree with `▶`/`▼` expand/collapse
-- **Source file viewer** — select any file and read its contents in a split panel
-- File count per directory, extension-based color coding
-- Package dependency tree from `package.json`
-- API endpoint detection (GET / POST / PUT / DELETE / PATCH)
-
-```
-TREE                            │ SOURCE  src/index.ts
-▼ src/            23f           │  1  import React from 'react'
-  ▼ components/    8f           │  2  import { render } from 'ink'
-    Header.tsx   ◀ open         │  3
-  ▶ hooks/         4f           │  4  render(<App />)
-▶ scripts/         6f           │  …  [j/k] scroll  [esc] close
-```
-
-### 3 GIT tab
-- Current branch, ahead/behind remote counts
-- Changed file list (MOD / ADD / DEL)
-- Per-file diff visualization with real `+N -N` line counts
-- Recent commit history with hash, message, and relative time
-
----
-
-## Installation
-
-### Option 1 — npx (no install required)
-
-```bash
-npx claude-code-hud
-```
-
-### Option 2 — npm global install
-
-```bash
-npm install -g claude-code-hud
-claude-hud
-```
-
-### Option 3 — Claude Code Plugin
-
-```bash
-/plugin install letsgojh0810/hud-plugin
-```
-
----
-
-## Usage
-
-터미널 두 개를 열고, 같은 프로젝트 디렉토리에서 실행하면 됩니다.
+터미널 두 개를 열고 같은 프로젝트 디렉토리에서 실행하면 됩니다.
 
 ```
 터미널 A                         터미널 B
@@ -99,85 +47,153 @@ cd ~/my-project
 tmux split-window -h "npx claude-code-hud"
 ```
 
+### 설치
+
+```bash
+# 설치 없이 바로 실행
+npx claude-code-hud
+
+# 전역 설치
+npm install -g claude-code-hud
+claude-hud
+
+# Claude Code 플러그인
+/plugin install letsgojh0810/hud-plugin
+```
+
+### 기능
+
+**1 TOKENS 탭**
+- 컨텍스트 윈도우 사용량 게이지 (OK / MID / WARN)
+- Anthropic API 기반 5h / 주간 사용률 (실제 값, 추정치 아님)
+- input / output / cache-read / cache-write 토큰 분류
+- 최근 12시간 output 토큰 sparkline
+
+**2 PROJECT 탭 — 인터랙티브 파일 브라우저**
+- 디렉토리 트리 (펼치기/접기)
+- 파일 선택 시 소스 코드 뷰어 (split 패널)
+- 패키지 의존성 트리
+- API 엔드포인트 감지
+
+```
+TREE                            │ SOURCE  src/index.ts
+▼ src/            23f           │  1  import React from 'react'
+  ▼ components/    8f           │  2  import { render } from 'ink'
+    Header.tsx   ◀ open         │  3
+  ▶ hooks/         4f           │  4  render(<App />)
+▶ scripts/         6f           │  …  [j/k] scroll  [esc] close
+```
+
+**3 GIT 탭**
+- 현재 브랜치, ahead/behind 카운트
+- 변경 파일 목록 (MOD / ADD / DEL)
+- 파일별 diff 시각화 (+/- 바)
+- 최근 커밋 히스토리
+
+### 키보드 단축키
+
+| 키 | 동작 |
+|----|------|
+| `1` `2` `3` | 탭 전환 |
+| `j` / `k` | 스크롤 / 트리 이동 |
+| `→` / `Enter` | 디렉토리 펼치기 / 파일 열기 |
+| `←` / `Esc` | 접기 / 소스 뷰어 닫기 |
+| `d` | 다크 / 라이트 모드 전환 |
+| `r` | 수동 새로고침 |
+| `q` | 종료 |
+
+### 요구사항
+
+- Node.js 18+
+- Claude Code 설치 및 로그인 (토큰 데이터 수집)
+- Claude Pro / Max 플랜 권장 (5h / 주간 사용률 표시)
+- Git (GIT 탭 사용 시)
+
 ---
 
-## Keyboard Shortcuts
+## English
 
-### Global
+A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser in a separate terminal window or tmux pane.
 
-| Key     | Action                   |
-|---------|--------------------------|
-| `1`     | Switch to TOKENS tab     |
-| `2`     | Switch to PROJECT tab    |
-| `3`     | Switch to GIT tab        |
-| `d`     | Toggle dark / light mode |
-| `r`     | Manual refresh           |
-| `q`     | Quit                     |
+### Usage
 
-### TOKENS / GIT tab
+Open two terminals in the same project directory.
 
-| Key     | Action       |
-|---------|--------------|
-| `j` / `↓` | Scroll down |
-| `k` / `↑` | Scroll up   |
+```
+Terminal A                       Terminal B
+─────────────────────────────    ─────────────────────────────
+cd ~/my-project                  cd ~/my-project
+claude                           npx claude-code-hud
+(working with Claude Code)       (HUD live display)
+```
 
-### PROJECT tab — file browser
+The HUD automatically detects your current directory and shows token, git, and project info for that project.
 
-| Key          | Action                        |
-|--------------|-------------------------------|
-| `j` / `↓`   | Move cursor down              |
-| `k` / `↑`   | Move cursor up                |
-| `→` / `Enter`| Expand directory              |
-| `←`          | Collapse directory / close viewer |
-| `Enter` on file | Open source viewer        |
-| `Esc`        | Close source viewer           |
-| `j` / `k`   | Scroll source (when open)     |
+```bash
+# tmux split pane
+cd ~/my-project
+tmux split-window -h "npx claude-code-hud"
+```
 
----
+### Installation
 
-## Requirements
+```bash
+# No install — run directly
+npx claude-code-hud
 
-- **Node.js 18+**
-- **Claude Code** installed and authenticated (for token data)
-- **Claude Pro or Max plan** recommended — enables real 5h/weekly usage % from Anthropic API
+# Global install
+npm install -g claude-code-hud
+claude-hud
+
+# Claude Code plugin
+/plugin install letsgojh0810/hud-plugin
+```
+
+### Features
+
+**1 TOKENS tab**
+- Context window usage gauge (OK / MID / WARN)
+- Real 5h / weekly usage from Anthropic OAuth API — not estimates
+- Input / output / cache-read / cache-write breakdown
+- Output tokens sparkline over the last 12 hours
+
+**2 PROJECT tab — interactive file browser**
+- Navigable directory tree with expand/collapse
+- Source file viewer in a split panel
+- Package dependency tree from `package.json`
+- API endpoint detection (GET / POST / PUT / DELETE / PATCH)
+
+**3 GIT tab**
+- Branch status, ahead/behind remote
+- Changed file list (MOD / ADD / DEL) with real `+N -N` diff counts
+- Recent commit history
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `1` `2` `3` | Switch tabs |
+| `j` / `k` | Scroll / move tree cursor |
+| `→` / `Enter` | Expand dir / open file |
+| `←` / `Esc` | Collapse / close source viewer |
+| `d` | Toggle dark / light mode |
+| `r` | Manual refresh |
+| `q` | Quit |
+
+### Requirements
+
+- Node.js 18+
+- Claude Code installed and authenticated
+- Claude Pro or Max plan recommended (for real 5h / weekly usage %)
 - Git (optional, for GIT tab)
 
----
+### How it works
 
-## Environment Variables
-
-| Variable              | Default         | Description                              |
-|-----------------------|-----------------|------------------------------------------|
-| `CLAUDE_PROJECT_ROOT` | `process.cwd()` | Project root directory to monitor        |
-
----
-
-## How it works
-
-- **Token data**: Watches `~/.claude/projects/*/sessions/*.jsonl` with chokidar — updates instantly when Claude responds
-- **Usage window**: Calls `api.anthropic.com/api/oauth/usage` with your local Claude credentials (same as Claude Code uses) — cached 5 min
-- **Git status**: Polls git every 3 seconds
+- **Token data**: Watches `~/.claude/projects/*/sessions/*.jsonl` with chokidar — updates instantly on each Claude response
+- **Usage window**: Calls `api.anthropic.com/api/oauth/usage` using local Claude credentials — cached 5 min
+- **Git**: Polls every 3 seconds
 - **Project scan**: One-time fast-glob scan on startup, `r` to rescan
 
 ---
-
-## Color Theme
-
-Toss Blue (`#3182F6`) based palette. Full dark and light mode — toggle with `d`.
-
----
-
-## Development
-
-```bash
-git clone https://github.com/letsgojh0810/hud-plugin.git
-cd hud-plugin
-npm install
-npm run hud
-```
-
----
-
-## License
 
 MIT — [letsgojh0810](https://github.com/letsgojh0810)
