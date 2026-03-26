@@ -7,10 +7,6 @@ on:
       - 'package.json'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -27,8 +23,6 @@ jobs:
         run: |
           PUBLISHED=$(npm view claude-code-hud version 2>/dev/null || echo "0.0.0")
           LOCAL=$(node -p "require('./package.json').version")
-          echo "published=$PUBLISHED" >> $GITHUB_OUTPUT
-          echo "local=$LOCAL" >> $GITHUB_OUTPUT
           if [ "$PUBLISHED" != "$LOCAL" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
@@ -37,4 +31,6 @@ jobs:
 
       - name: Publish
         if: steps.version.outputs.changed == 'true'
-        run: npm publish --provenance --access public
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
