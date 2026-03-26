@@ -1,10 +1,11 @@
 {
   "name": "claude-code-hud",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Terminal HUD for Claude Code — real-time token usage, git status, project monitor",
   "type": "module",
   "bin": {
-    "claude-hud": "./bin/claude-hud.js"
+    "claude-hud": "./bin/claude-hud.js",
+    "claude-code-hud": "./bin/claude-hud.js"
   },
   "keywords": [
     "claude",
