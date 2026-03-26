@@ -66,13 +66,13 @@ type DirNode = {
   fileCount: number;    // direct files only
   totalFiles: number;   // recursive total
   children: DirNode[];
+  files: string[];      // direct file names
   expanded: boolean;
 };
 
-type FlatNode = {
-  node: DirNode;
-  depth: number;
-};
+type FlatNode =
+  | { type: 'dir';  node: DirNode; depth: number }
+  | { type: 'file'; filePath: string; fileName: string; depth: number };
 
 // ── Project scanner ────────────────────────────────────────────────────────
 type ProjectInfo = {
@@ -100,7 +100,7 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
 
   // Build directory tree
   function buildTree(filePaths: string[]): DirNode {
-    const root: DirNode = { name: '.', path: '', fileCount: 0, totalFiles: 0, children: [], expanded: true };
+    const root: DirNode = { name: '.', path: '', fileCount: 0, totalFiles: 0, children: [], files: [], expanded: true };
     for (const file of filePaths) {
       const parts = file.split('/');
       let cur = root;
@@ -108,12 +108,13 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
         const seg = parts[i];
         let child = cur.children.find(c => c.name === seg);
         if (!child) {
-          child = { name: seg, path: parts.slice(0, i + 1).join('/'), fileCount: 0, totalFiles: 0, children: [], expanded: false };
+          child = { name: seg, path: parts.slice(0, i + 1).join('/'), fileCount: 0, totalFiles: 0, children: [], files: [], expanded: false };
           cur.children.push(child);
         }
         cur = child;
       }
       cur.fileCount++;
+      cur.files.push(parts[parts.length - 1]);
     }
     function calcTotal(n: DirNode): number {
       n.totalFiles = n.fileCount + n.children.reduce((s, c) => s + calcTotal(c), 0);
@@ -169,10 +170,15 @@ function flattenTree(node: DirNode, depth: number, expanded: Record<string, bool
   const result: FlatNode[] = [];
   const sorted = [...node.children].sort((a, b) => b.totalFiles - a.totalFiles);
   for (const child of sorted) {
-    result.push({ node: child, depth });
+    result.push({ type: 'dir', node: child, depth });
     const isExp = expanded[child.path] ?? false;
-    if (isExp && child.children.length > 0) {
+    if (isExp) {
       result.push(...flattenTree(child, depth + 1, expanded));
+      const sortedFiles = [...child.files].sort();
+      for (const f of sortedFiles) {
+        const filePath = child.path ? `${child.path}/${f}` : f;
+        result.push({ type: 'file', filePath, fileName: f, depth: depth + 1 });
+      }
     }
   }
   return result;
@@ -302,43 +308,49 @@ function TokensTab({ usage, history, rateLimits, termWidth, C }: any) {
 }
 
 // ── Tab 2: PROJECT ─────────────────────────────────────────────────────────
-function ProjectTab({ info, treeCursor, treeExpanded, termWidth, C }: any) {
+function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, fileScroll, termWidth, C }: any) {
   if (!info) return (
     <Box borderStyle="single" borderColor={C.border} paddingX={1}>
       <Text color={C.dimmer}>scanning project…</Text>
     </Box>
   );
 
-  // Flatten visible tree using treeExpanded from props (closure)
+  // Flatten visible tree using treeExpanded from props
   function flatNodes_inner(node: DirNode, depth: number): FlatNode[] {
     const result: FlatNode[] = [];
     const sorted = [...node.children].sort((a, b) => b.totalFiles - a.totalFiles);
     for (const child of sorted) {
-      result.push({ node: child, depth });
+      result.push({ type: 'dir', node: child, depth });
       const isExp = treeExpanded[child.path] ?? false;
-      if (isExp && child.children.length > 0) {
+      if (isExp) {
         result.push(...flatNodes_inner(child, depth + 1));
+        const sortedFiles = [...child.files].sort();
+        for (const f of sortedFiles) {
+          const filePath = child.path ? `${child.path}/${f}` : f;
+          result.push({ type: 'file', filePath, fileName: f, depth: depth + 1 });
+        }
       }
     }
     return result;
   }
 
-  const flatNodes = info.dirTree ? flatNodes_inner(info.dirTree, 0) : [];
+  const flatNodes: FlatNode[] = info.dirTree ? flatNodes_inner(info.dirTree, 0) : [];
   const safeCursor = Math.min(treeCursor, Math.max(0, flatNodes.length - 1));
 
-  const EXT_LABELS: Record<string, string> = {
-    '.ts': 'TypeScript', '.tsx': 'TypeScript', '.js': 'JavaScript', '.jsx': 'JavaScript',
-    '.py': 'Python', '.go': 'Go', '.java': 'Java', '.rs': 'Rust',
-    '.json': 'JSON', '.md': 'Markdown', '.css': 'CSS', '.html': 'HTML',
-  };
-  const extGroups: Record<string, number> = {};
-  for (const [ext, cnt] of Object.entries(info.byExt as Record<string, number>)) {
-    const label = EXT_LABELS[ext] || 'Other';
-    extGroups[label] = (extGroups[label] || 0) + cnt;
-  }
-  const sortedExts = Object.entries(extGroups).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const totalEndpoints = Object.values(info.endpoints as Record<string, number>).reduce((a: number, b: number) => a + b, 0);
-  const langs = sortedExts.slice(0, 2).map(([l]) => l).join(' / ');
+
+  // Split layout when file is open
+  const hasFile = !!selectedFile;
+  const TREE_W = hasFile ? Math.max(28, Math.floor(termWidth * 0.36)) : termWidth - 2;
+  const SOURCE_W = hasFile ? termWidth - TREE_W - 5 : 0;
+  const VISIBLE_LINES = 22;
+
+  const EXT_COLOR: Record<string, string> = {
+    '.ts': C.brand, '.tsx': C.brand, '.js': C.cyan, '.jsx': C.cyan,
+    '.py': C.yellow, '.go': C.cyan, '.java': C.yellow, '.rs': C.red,
+    '.json': C.dim, '.md': C.green, '.css': C.purple, '.html': C.yellow,
+    '.mjs': C.cyan, '.cjs': C.cyan,
+  };
 
   return (
     <Box flexDirection="column">
@@ -346,54 +358,95 @@ function ProjectTab({ info, treeCursor, treeExpanded, termWidth, C }: any) {
       <Box borderStyle="single" borderColor={C.border} paddingX={1}>
         <Text color={C.text} bold>{info.totalFiles} files</Text>
         <Text color={C.dim}>  │  </Text>
-        <Text color={C.text} bold>{info.packages.filter((p: any) => p.depth === 0).length} packages</Text>
-        <Text color={C.dim}>  │  </Text>
-        <Text color={C.text} bold>~{totalEndpoints} endpoints</Text>
-        <Text color={C.dim}>  │  {langs}</Text>
+        <Text color={C.text} bold>{info.packages.filter((p: any) => p.depth === 0).length} pkgs</Text>
+        <Text color={C.dim}>  │  ~{totalEndpoints} endpoints  │  </Text>
+        {hasFile
+          ? <Text color={C.brand}>{selectedFile}</Text>
+          : <Text color={C.dimmer}>[enter] open file  [←] collapse</Text>
+        }
       </Box>
 
-      {/* Directory tree */}
-      <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
-        <Text color={C.dim} bold>TREE  <Text color={C.dimmer}>[j/k] move  [enter/→←] expand</Text></Text>
-        {flatNodes.length === 0 && <Text color={C.dimmer}>  (empty)</Text>}
-        {flatNodes.map((fn, idx) => {
-          const isSelected = idx === safeCursor;
-          const isExp = treeExpanded[fn.node.path] ?? false;
-          const hasChildren = fn.node.children.length > 0;
-          const indent = '  '.repeat(fn.depth);
-          const expIcon = hasChildren ? (isExp ? '▼ ' : '▶ ') : '  ';
-          const nameColor = isSelected ? C.brand : fn.depth === 0 ? C.text : C.dim;
-          return (
-            <Box key={`${fn.node.path}__${idx}`}>
-              <Text color={C.dimmer}>{indent}</Text>
-              <Text color={isSelected ? C.brand : C.dimmer}>{expIcon}</Text>
-              <Text color={nameColor} bold={isSelected}>{fn.node.name}/</Text>
-              <Text color={C.dimmer}>  {fn.node.totalFiles}f</Text>
-              {isSelected && fn.node.fileCount > 0 && (
-                <Text color={C.dimmer}>  ({fn.node.fileCount} direct)</Text>
-              )}
-            </Box>
-          );
-        })}
+      {/* Main area: tree + optional source */}
+      <Box flexDirection="row">
+
+        {/* ── Tree panel ── */}
+        <Box flexDirection="column" borderStyle="single" borderColor={hasFile ? C.brand : C.border} paddingX={1} width={TREE_W}>
+          <Text color={C.dim} bold>TREE</Text>
+          {flatNodes.length === 0 && <Text color={C.dimmer}>  (empty)</Text>}
+          {flatNodes.map((fn, idx) => {
+            const isSelected = idx === safeCursor;
+            const indent = '  '.repeat(fn.depth);
+            if (fn.type === 'dir') {
+              const isExp = treeExpanded[fn.node.path] ?? false;
+              const hasChildren = fn.node.children.length > 0 || fn.node.files.length > 0;
+              const expIcon = hasChildren ? (isExp ? '▼ ' : '▶ ') : '  ';
+              const nameColor = isSelected ? C.brand : fn.depth === 0 ? C.text : C.dim;
+              return (
+                <Box key={`d_${fn.node.path}_${idx}`}>
+                  <Text color={C.dimmer}>{indent}</Text>
+                  <Text color={isSelected ? C.brand : C.dimmer}>{expIcon}</Text>
+                  <Text color={nameColor} bold={isSelected}>{fn.node.name}/</Text>
+                  <Text color={C.dimmer}>  {fn.node.totalFiles}f</Text>
+                </Box>
+              );
+            } else {
+              const ext = fn.fileName.includes('.') ? '.' + fn.fileName.split('.').pop()! : '';
+              const fileColor = isSelected ? C.brand : (EXT_COLOR[ext] ?? C.text);
+              const isOpen = selectedFile === fn.filePath;
+              return (
+                <Box key={`f_${fn.filePath}_${idx}`}>
+                  <Text color={C.dimmer}>{indent}</Text>
+                  <Text color={isSelected ? C.brand : C.dimmer}>{isOpen ? '▶ ' : '  '}</Text>
+                  <Text color={fileColor} bold={isSelected || isOpen}>{fn.fileName}</Text>
+                </Box>
+              );
+            }
+          })}
+        </Box>
+
+        {/* ── Source viewer panel ── */}
+        {hasFile && (
+          <Box flexDirection="column" borderStyle="single" borderColor={C.brand} paddingX={1} width={SOURCE_W}>
+            <Text color={C.brand} bold>SOURCE  <Text color={C.dim}>{selectedFile}</Text></Text>
+            {(fileLines as string[]).slice(fileScroll, fileScroll + VISIBLE_LINES).map((line, i) => {
+              const lineNo = fileScroll + i + 1;
+              const truncated = line.length > SOURCE_W - 6 ? line.slice(0, SOURCE_W - 7) + '…' : line;
+              return (
+                <Box key={i}>
+                  <Box width={4} justifyContent="flex-end">
+                    <Text color={C.dimmer}>{lineNo}</Text>
+                  </Box>
+                  <Text color={C.dimmer}>  </Text>
+                  <Text color={C.text}>{truncated}</Text>
+                </Box>
+              );
+            })}
+            {(fileLines as string[]).length > VISIBLE_LINES && (
+              <Text color={C.dimmer}>  ↕ {fileScroll + 1}–{Math.min(fileScroll + VISIBLE_LINES, fileLines.length)} / {fileLines.length} lines  [j/k] scroll  [esc] close</Text>
+            )}
+          </Box>
+        )}
       </Box>
 
-      {/* Packages */}
-      <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
-        <Text color={C.dim} bold>PACKAGES</Text>
-        {info.packages.slice(0, 12).map((p: any, i: number) => {
-          const isRoot = p.depth === 0;
-          const nextIsRoot = i + 1 < info.packages.length && info.packages[i + 1].depth === 0;
-          const isLastInGroup = nextIsRoot || i === Math.min(11, info.packages.length - 1);
-          const prefix = isRoot ? '' : (isLastInGroup ? '└─ ' : '├─ ');
-          return (
-            <Box key={i}>
-              <Text color={C.dimmer}>{isRoot ? '' : '   '}{prefix}</Text>
-              <Text color={isRoot ? C.brand : C.text}>{p.name}</Text>
-              <Text color={C.dimmer}>  {p.version}</Text>
-            </Box>
-          );
-        })}
-      </Box>
+      {/* Packages (hidden when file open to save space) */}
+      {!hasFile && (
+        <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
+          <Text color={C.dim} bold>PACKAGES</Text>
+          {info.packages.slice(0, 10).map((p: any, i: number) => {
+            const isRoot = p.depth === 0;
+            const nextIsRoot = i + 1 < info.packages.length && info.packages[i + 1].depth === 0;
+            const isLast = nextIsRoot || i === Math.min(9, info.packages.length - 1);
+            const prefix = isRoot ? '' : (isLast ? '└─ ' : '├─ ');
+            return (
+              <Box key={i}>
+                <Text color={C.dimmer}>{isRoot ? '' : '   '}{prefix}</Text>
+                <Text color={isRoot ? C.brand : C.text}>{p.name}</Text>
+                <Text color={C.dimmer}>  {p.version}</Text>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -502,6 +555,11 @@ function App() {
   const [treeCursor,   setTreeCursor]   = useState(0);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
 
+  // Source viewer state
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileLines,    setFileLines]    = useState<string[]>([]);
+  const [fileScroll,   setFileScroll]   = useState(0);
+
   const refresh = useCallback(() => {
     setUsage(readTokenUsage());
     setHistory(readTokenHistory());
@@ -544,7 +602,14 @@ function App() {
   }, []);
 
   useInput((input, key) => {
-    if (input === 'q' || key.escape) process.exit(0);
+    if (input === 'q') process.exit(0);
+
+    // Escape: close file viewer first, then quit
+    if (key.escape) {
+      if (selectedFile) { setSelectedFile(null); setFileLines([]); setFileScroll(0); return; }
+      process.exit(0);
+    }
+
     if (input === '1') { setTab(0); setScrollY(0); }
     if (input === '2') { setTab(1); setScrollY(0); }
     if (input === '3') { setTab(2); setScrollY(0); }
@@ -554,11 +619,14 @@ function App() {
     if (input === 'r') {
       refresh();
       setProject(null);
+      setSelectedFile(null); setFileLines([]); setFileScroll(0);
       scanProject(cwd).then(p => { setProject(p); setTreeCursor(0); }).catch(() => {});
     }
 
     if (input === 'j' || key.downArrow) {
-      if (tab === 1) {
+      if (tab === 1 && selectedFile) {
+        setFileScroll(s => Math.min(s + 1, Math.max(0, fileLines.length - 5)));
+      } else if (tab === 1) {
         const flat = project?.dirTree ? flattenTree(project.dirTree, 0, treeExpanded) : [];
         setTreeCursor(c => Math.min(c + 1, flat.length - 1));
       } else {
@@ -566,31 +634,52 @@ function App() {
       }
     }
     if (input === 'k' || key.upArrow) {
-      if (tab === 1) setTreeCursor(c => Math.max(c - 1, 0));
-      else setScrollY(s => Math.max(s - 1, 0));
-    }
-
-    // Enter / Space — toggle expand in tree
-    if ((key.return || input === ' ') && tab === 1 && project?.dirTree) {
-      const flat = flattenTree(project.dirTree, 0, treeExpanded);
-      const selected = flat[treeCursor];
-      if (selected && selected.node.children.length > 0) {
-        const path = selected.node.path;
-        setTreeExpanded(prev => ({ ...prev, [path]: !(prev[path] ?? false) }));
+      if (tab === 1 && selectedFile) {
+        setFileScroll(s => Math.max(s - 1, 0));
+      } else if (tab === 1) {
+        setTreeCursor(c => Math.max(c - 1, 0));
+      } else {
+        setScrollY(s => Math.max(s - 1, 0));
       }
     }
 
-    // Arrow right = expand, left = collapse
+    // Enter / Space — dir: toggle expand, file: open source viewer
+    if ((key.return || input === ' ') && tab === 1 && project?.dirTree) {
+      const flat = flattenTree(project.dirTree, 0, treeExpanded);
+      const sel = flat[treeCursor];
+      if (!sel) return;
+      if (sel.type === 'dir') {
+        const path = sel.node.path;
+        setTreeExpanded(prev => ({ ...prev, [path]: !(prev[path] ?? false) }));
+      } else {
+        // file: toggle source viewer
+        if (selectedFile === sel.filePath) {
+          setSelectedFile(null); setFileLines([]); setFileScroll(0);
+        } else {
+          try {
+            const content = fs.readFileSync(join(cwd, sel.filePath), 'utf-8');
+            setFileLines(content.split('\n'));
+          } catch {
+            setFileLines(['(cannot read file)']);
+          }
+          setSelectedFile(sel.filePath);
+          setFileScroll(0);
+        }
+      }
+    }
+
+    // Arrow right = expand dir, left = collapse
     if (key.rightArrow && tab === 1 && project?.dirTree) {
       const flat = flattenTree(project.dirTree, 0, treeExpanded);
-      const selected = flat[treeCursor];
-      if (selected) setTreeExpanded(prev => ({ ...prev, [selected.node.path]: true }));
+      const sel = flat[treeCursor];
+      if (sel?.type === 'dir') setTreeExpanded(prev => ({ ...prev, [sel.node.path]: true }));
     }
     if (key.leftArrow && tab === 1) {
+      if (selectedFile) { setSelectedFile(null); setFileLines([]); setFileScroll(0); return; }
       if (project?.dirTree) {
         const flat = flattenTree(project.dirTree, 0, treeExpanded);
-        const selected = flat[treeCursor];
-        if (selected) setTreeExpanded(prev => ({ ...prev, [selected.node.path]: false }));
+        const sel = flat[treeCursor];
+        if (sel?.type === 'dir') setTreeExpanded(prev => ({ ...prev, [sel.node.path]: false }));
       }
     }
   });
@@ -622,7 +711,7 @@ function App() {
       {/* ── Content (with scroll offset) ── */}
       <Box flexDirection="column" marginTop={-scrollY}>
         {tab === 0 && <TokensTab  usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} C={C} />}
-        {tab === 1 && <ProjectTab info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} termWidth={termWidth} C={C} />}
+        {tab === 1 && <ProjectTab info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} C={C} />}
         {tab === 2 && <GitTab     git={git} termWidth={termWidth} C={C} />}
       </Box>
 
@@ -632,7 +721,7 @@ function App() {
           <Text color={C.green}>● </Text>
           <Text color={C.dimmer}>[1/2/3] tabs  </Text>
           <Text color={tab === 1 ? C.brand : C.dimmer}>[j/k] {tab === 1 ? 'tree' : 'scroll'}  </Text>
-          <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? '[enter/→←] expand  ' : ''}</Text>
+          <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? (selectedFile ? '[esc/←] close  [j/k] scroll  ' : '[enter] open  [→←] expand  ') : ''}</Text>
           <Text color={C.dimmer}>[r] refresh  [d] theme  [q] quit</Text>
         </Box>
         <Text color={C.dimmer}>↻ {since}</Text>
