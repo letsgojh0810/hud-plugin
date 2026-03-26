@@ -692,6 +692,7 @@ function App() {
         if (selected && selected !== git.branch) {
           try {
             execSync(`git checkout ${selected}`, { cwd });
+            process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
             refresh();
           } catch {}
         }
