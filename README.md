@@ -117,6 +117,23 @@ claude-hud
 - Claude Pro / Max 플랜 권장 (5h / 주간 사용률 표시)
 - Git (GIT 탭 사용 시)
 
+### 플랫폼 지원
+
+| 기능 | macOS | Windows |
+|------|-------|---------|
+| 기본 실행 | ✅ | ✅ Node.js 설치 후 `npx` |
+| 토큰 / Git / 파일 브라우저 | ✅ | ✅ |
+| 5h / 주간 사용률 | ✅ Keychain 자동 인식 | ⚠️ `~/.claude/.credentials.json` 폴백 |
+| 터미널 렌더링 | ✅ | ✅ Windows Terminal 권장 (cmd.exe 깨짐) |
+| 한글 키보드 | ✅ | ⚠️ IME 방식 차이로 미지원 가능 |
+
+**Windows 권장 환경:**
+- [Windows Terminal](https://aka.ms/terminal) 사용
+- WSL2 환경이면 macOS와 동일하게 동작
+
+**Windows에서 5h/wk 사용률이 안 보일 때:**
+Claude Code를 한 번 실행하면 `~/.claude/.credentials.json`에 credentials이 저장됩니다. HUD는 이 파일을 자동으로 읽습니다.
+
 ---
 
 ## English
@@ -197,6 +214,23 @@ claude-hud
 | `q` | Quit |
 
 > Korean keyboard layout supported — `ㅓ/ㅏ` (j/k), `ㅇ` (d), `ㄱ` (r), `ㅂ` (q), `ㅠ` (b)
+
+### Platform Support
+
+| Feature | macOS | Windows |
+|---------|-------|---------|
+| Basic run | ✅ | ✅ via `npx` with Node.js |
+| Tokens / Git / File browser | ✅ | ✅ |
+| 5h / weekly usage % | ✅ Keychain auto-detected | ⚠️ Falls back to `~/.claude/.credentials.json` |
+| Terminal rendering | ✅ | ✅ Windows Terminal recommended (cmd.exe may break) |
+| Korean keyboard | ✅ | ⚠️ May not work depending on IME |
+
+**Windows recommendations:**
+- Use [Windows Terminal](https://aka.ms/terminal) for proper Unicode rendering
+- WSL2 works identically to macOS
+
+**5h / weekly usage not showing on Windows?**
+Run `claude` once to authenticate — credentials are saved to `~/.claude/.credentials.json` which the HUD reads automatically.
 
 ### How it works
 
