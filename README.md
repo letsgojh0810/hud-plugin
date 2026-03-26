@@ -59,9 +59,6 @@ npx claude-code-hud
 # 전역 설치
 npm install -g claude-code-hud
 claude-hud
-
-# Claude Code 플러그인
-/plugin install letsgojh0810/hud-plugin
 ```
 
 ### 기능
@@ -174,8 +171,6 @@ npx claude-code-hud
 npm install -g claude-code-hud
 claude-hud
 
-# Claude Code plugin
-/plugin install letsgojh0810/hud-plugin
 ```
 
 ### Features
