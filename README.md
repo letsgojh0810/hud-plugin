@@ -6,6 +6,10 @@
 
 ## 한국어
 
+Claude Code를 CLI로만 작업하다 보면 불편한 게 있습니다. 토큰이 얼마나 남았는지, 지금 Git 상태가 어떤지, 이 파일 구조가 어떻게 생겼는지 — 확인하려면 IntelliJ를 따로 켜거나 터미널 탭을 여러 개 열어야 했습니다.
+
+그래서 만들었습니다. 터미널 두 개만 띄우면 됩니다. 하나는 Claude Code, 하나는 HUD. 나머지는 필요 없습니다.
+
 Claude Code 작업 중 터미널을 떠나지 않고 토큰 사용량, Git 상태, 프로젝트 파일을 실시간으로 확인할 수 있는 터미널 HUD입니다.
 
 ```
@@ -112,6 +116,10 @@ TREE                            │ SOURCE  src/index.ts
 ---
 
 ## English
+
+When working with Claude Code in the terminal, I kept running into the same friction: how many tokens are left? what's the git status? what does this file structure look like? — answering any of these meant switching to another app or opening more terminal tabs.
+
+So I built this. Two terminals. One for Claude Code, one for the HUD. That's it.
 
 A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser in a separate terminal window or tmux pane.
 
