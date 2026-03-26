@@ -1,10 +1,10 @@
 {
   "name": "claude-code-hud",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Terminal HUD for Claude Code — real-time token usage, git status, project monitor",
   "type": "module",
   "bin": {
-    "claude-hud": "./bin/start.mjs"
+    "claude-hud": "./bin/claude-hud"
   },
   "keywords": [
     "claude",

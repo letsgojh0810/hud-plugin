@@ -1,89 +1,97 @@
 # claude-code-hud
 
-A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and project info in a separate terminal window or tmux pane.
+A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser in a separate terminal window or tmux pane.
 
 ```
-┌────────────────────────────────────────────────────────┐
-│ ◆  HUD  [1 TOKENS] 2 PROJECT  3 GIT    sonnet-4-6      │
-├────────────────────────────────────────────────────────┤
-│ CONTEXT WINDOW                                          │
-│ ████████████████░░░░░░░░░░░  34%  67K / 200K  OK        │
-├────────────────────────────────────────────────────────┤
-│ USAGE WINDOW  (Anthropic API)                           │
-│ 5h ████████████████░░░░  62.0%  resets in 4h            │
-│ wk ████░░░░░░░░░░░░░░░░  15.0%  resets in 144h          │
-├────────────────────────────────────────────────────────┤
-│ INPUT   ██████░░░░░░░░░░░░░░  48.2K  $0.0145            │
-│ OUTPUT  ██░░░░░░░░░░░░░░░░░░   8.1K  $0.0122            │
-│ CACHE   ████████████░░░░░░░░  52.0K  $0.0047            │
-│                                              $0.0314    │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ◆  HUD  [1 TOKENS] 2 PROJECT  3 GIT                    sonnet-4-6  ·  up 4m │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ CONTEXT WINDOW                                                                │
+│ ████████████████████░░░░░░░░░░░░░░░░░░░░░░░  46%  92K / 200K  OK             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ USAGE WINDOW  (Anthropic API)                                                 │
+│ 5h ████████░░░░░░░░░░░░░░░░░░░░  28.0%  resets in 3h                         │
+│ wk ███░░░░░░░░░░░░░░░░░░░░░░░░░   9.0%  resets in 148h                       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ TOKENS  (this session)                                                        │
+│ input         ░░░░░░░░░░░░░░░░░░░░░░░░    4.8K   0%                          │
+│ output        ░░░░░░░░░░░░░░░░░░░░░░░░  188.5K   0%                          │
+│ cache-read    ████████████████████████   51.5M 100%                          │
+│ cache-write   ██░░░░░░░░░░░░░░░░░░░░░░    3.8M   7%                          │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Features
 
-### TOKENS tab
-- Context window usage gauge (█░ progress bar) with percentage and token counts
-- 5-hour and weekly usage window from Anthropic API (real %)
-- Input / output / cache-read / cache-write breakdown with cost
-- Processing sparkline (▁▂▃▄▅▆▇█) over recent turns
-- Model name display
+### 1 TOKENS tab
+- Context window usage gauge with percentage (OK / MID / WARN)
+- **5h and weekly usage** from Anthropic OAuth API — real percentages, not estimates
+- Input / output / cache-read / cache-write token breakdown with bars
+- Output tokens sparkline (▁▂▃▄▅▆▇█) over the last 12 hours
+- Model name and session uptime
 
-### PROJECT tab
-- Total file count, package count, detected endpoints
-- Package dependency tree (├─ └─)
-- Endpoint summary (GET / POST / PUT / DELETE counts)
-- Alerts and anomalies
+### 2 PROJECT tab — interactive file browser
+- Directory tree with `▶`/`▼` expand/collapse
+- **Source file viewer** — select any file and read its contents in a split panel
+- File count per directory, extension-based color coding
+- Package dependency tree from `package.json`
+- API endpoint detection (GET / POST / PUT / DELETE / PATCH)
 
-### GIT tab
-- Current branch, ahead/behind counts
+```
+TREE                            │ SOURCE  src/index.ts
+▼ src/            23f           │  1  import React from 'react'
+  ▼ components/    8f           │  2  import { render } from 'ink'
+    Header.tsx   ◀ open         │  3
+  ▶ hooks/         4f           │  4  render(<App />)
+▶ scripts/         6f           │  …  [j/k] scroll  [esc] close
+```
+
+### 3 GIT tab
+- Current branch, ahead/behind remote counts
 - Changed file list (MOD / ADD / DEL)
-- Per-file diff visualization (+/- bars)
-- Recent commit history with hash, message, and time
+- Per-file diff visualization with real `+N -N` line counts
+- Recent commit history with hash, message, and relative time
 
 ---
 
 ## Installation
 
-### Option 1 — Claude Code Plugin (recommended)
-
-```bash
-/plugin install letsgojh0810/hud-plugin
-```
-
-Then use the `/hud` command inside Claude Code to get a status snapshot.
-
-### Option 2 — npx (no install required)
+### Option 1 — npx (no install required)
 
 ```bash
 npx claude-code-hud
 ```
 
-Runs the full interactive TUI in your current terminal. Open a separate terminal window or tmux pane first.
-
-### Option 3 — npm global install
+### Option 2 — npm global install
 
 ```bash
 npm install -g claude-code-hud
 claude-hud
 ```
 
+### Option 3 — Claude Code Plugin
+
+```bash
+/plugin install letsgojh0810/hud-plugin
+```
+
 ---
 
 ## Usage
 
-Run in a **separate terminal window** or **tmux split pane** while Claude Code is active in another pane:
+Run in a **separate terminal window** or **tmux split pane** while Claude Code is active:
 
 ```bash
-# Separate terminal
+# Separate terminal — run from your project directory
+cd ~/my-project
 npx claude-code-hud
 
-# tmux split (open right pane with HUD)
-tmux split-window -h "npx claude-code-hud"
+# tmux split pane
+tmux split-window -h "cd ~/my-project && npx claude-code-hud"
 
-# Point to a specific project directory
+# Specify project root explicitly
 CLAUDE_PROJECT_ROOT=/path/to/project npx claude-code-hud
 ```
 
@@ -91,50 +99,67 @@ CLAUDE_PROJECT_ROOT=/path/to/project npx claude-code-hud
 
 ## Keyboard Shortcuts
 
-| Key   | Action                     |
-|-------|----------------------------|
-| `1`   | Switch to TOKENS tab       |
-| `2`   | Switch to PROJECT tab      |
-| `3`   | Switch to GIT tab          |
-| `j`   | Scroll down                |
-| `k`   | Scroll up                  |
-| `d`   | Toggle dark / light mode   |
-| `q`   | Quit                       |
+### Global
+
+| Key     | Action                   |
+|---------|--------------------------|
+| `1`     | Switch to TOKENS tab     |
+| `2`     | Switch to PROJECT tab    |
+| `3`     | Switch to GIT tab        |
+| `d`     | Toggle dark / light mode |
+| `r`     | Manual refresh           |
+| `q`     | Quit                     |
+
+### TOKENS / GIT tab
+
+| Key     | Action       |
+|---------|--------------|
+| `j` / `↓` | Scroll down |
+| `k` / `↑` | Scroll up   |
+
+### PROJECT tab — file browser
+
+| Key          | Action                        |
+|--------------|-------------------------------|
+| `j` / `↓`   | Move cursor down              |
+| `k` / `↑`   | Move cursor up                |
+| `→` / `Enter`| Expand directory              |
+| `←`          | Collapse directory / close viewer |
+| `Enter` on file | Open source viewer        |
+| `Esc`        | Close source viewer           |
+| `j` / `k`   | Scroll source (when open)     |
 
 ---
 
 ## Requirements
 
 - **Node.js 18+**
-- **Claude Code** installed and active (for token data from JSONL session files)
-- **Claude Pro or Max plan** recommended for full 5h/7d usage window data from Anthropic API
-- Git (for git status features)
+- **Claude Code** installed and authenticated (for token data)
+- **Claude Pro or Max plan** recommended — enables real 5h/weekly usage % from Anthropic API
+- Git (optional, for GIT tab)
 
 ---
 
 ## Environment Variables
 
-| Variable              | Default     | Description                                         |
-|-----------------------|-------------|-----------------------------------------------------|
-| `CLAUDE_PROJECT_ROOT` | `process.cwd()` | Root directory of the project to monitor        |
+| Variable              | Default         | Description                              |
+|-----------------------|-----------------|------------------------------------------|
+| `CLAUDE_PROJECT_ROOT` | `process.cwd()` | Project root directory to monitor        |
 
 ---
 
 ## How it works
 
-- **Token data**: Parses `~/.claude/projects/<hash>/sessions/*.jsonl` in real-time using chokidar file watching
-- **Usage window**: Reads Anthropic API usage limits (5h / weekly) when available
-- **Git status**: Polls `simple-git` every 3–5 seconds for branch, diff, and commit info
-- **Project scan**: Uses `fast-glob` to scan files and detect packages/endpoints once, then caches
+- **Token data**: Watches `~/.claude/projects/*/sessions/*.jsonl` with chokidar — updates instantly when Claude responds
+- **Usage window**: Calls `api.anthropic.com/api/oauth/usage` with your local Claude credentials (same as Claude Code uses) — cached 5 min
+- **Git status**: Polls git every 3 seconds
+- **Project scan**: One-time fast-glob scan on startup, `r` to rescan
 
 ---
 
 ## Color Theme
 
-Toss Blue (`#3182F6`) based palette with full dark and light mode support.
-
-Dark mode uses `#0E1117` background. Light mode uses `#FFFFFF`.
-Toggle with the `d` key at any time.
+Toss Blue (`#3182F6`) based palette. Full dark and light mode — toggle with `d`.
 
 ---
 
@@ -144,15 +169,8 @@ Toggle with the `d` key at any time.
 git clone https://github.com/letsgojh0810/hud-plugin.git
 cd hud-plugin
 npm install
-npm run hud        # launches TUI in dev mode
+npm run hud
 ```
-
----
-
-## Notes for Korean users
-
-이 플러그인은 Claude Code를 터미널에서 집중적으로 사용하는 개발자를 위해 만들어졌습니다.
-토큰 사용량, Git 상태, 프로젝트 구조를 별도 터미널 창에서 실시간으로 확인할 수 있습니다.
 
 ---
 
