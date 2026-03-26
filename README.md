@@ -81,18 +81,22 @@ claude-hud
 
 ## Usage
 
-Run in a **separate terminal window** or **tmux split pane** while Claude Code is active:
+터미널 두 개를 열고, 같은 프로젝트 디렉토리에서 실행하면 됩니다.
+
+```
+터미널 A                         터미널 B
+─────────────────────────────    ─────────────────────────────
+cd ~/my-project                  cd ~/my-project
+claude                           npx claude-code-hud
+(Claude Code 작업 중...)          (HUD 실시간 표시)
+```
+
+HUD는 현재 디렉토리를 기준으로 토큰, git, 프로젝트 정보를 자동으로 인식합니다.
 
 ```bash
-# Separate terminal — run from your project directory
+# tmux로 한 화면에서 split
 cd ~/my-project
-npx claude-code-hud
-
-# tmux split pane
-tmux split-window -h "cd ~/my-project && npx claude-code-hud"
-
-# Specify project root explicitly
-CLAUDE_PROJECT_ROOT=/path/to/project npx claude-code-hud
+tmux split-window -h "npx claude-code-hud"
 ```
 
 ---
