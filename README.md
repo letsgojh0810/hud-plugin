@@ -8,27 +8,7 @@
 
 Claude Code로 작업할 때 토큰 사용량, git 상태, 파일 구조를 IDE나 별도 탭 없이 터미널 하나에서 확인할 수 있는 HUD입니다.
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ ◆ HUD  │  ◉ TOKENS  │  ○ PROJECT  │  ○ GIT              sonnet-4-6  ·  up 4m │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ ▸ CONTEXT WINDOW                                                              │
-│   ████████████████████░░░░░░░░░░░░░░░░░░░░░░░  46%  92K / 200K  OK           │
-│                                                                               │
-│ ▸ USAGE WINDOW                                                                │
-│   5h ████████░░░░░░░░░░░░░░░░░░░░  28.0%  resets in 3h 12m                   │
-│   wk ███░░░░░░░░░░░░░░░░░░░░░░░░░   9.0%  resets in 6h 48m                   │
-│                                                                               │
-│ ▸ TOKENS  (this session)                                                      │
-│   input         ░░░░░░░░░░░░░░░░░░░░░░░░    4.8K   0%                        │
-│   output        ░░░░░░░░░░░░░░░░░░░░░░░░  188.5K   0%                        │
-│   cache-read    ████████████████████████   51.5M 100%                        │
-│   cache-write   ██░░░░░░░░░░░░░░░░░░░░░░    3.8M   7%                        │
-│                                                                               │
-│ ▸ OUTPUT TOKENS / HR                                                          │
-│   total  2.1M   │   avg  48.2K/hr   │   peak  312K/hr                        │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+![demo](./demo.gif)
 
 ### 사용법
 
@@ -137,11 +117,7 @@ Claude Code를 한 번 실행하면 `~/.claude/.credentials.json`에 credentials
 
 A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser. No IDE, no extra tabs. Just a second terminal window.
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ ◆ HUD  │  ◉ TOKENS  │  ○ PROJECT  │  ○ GIT              sonnet-4-6  ·  up 4m │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+![demo](./demo.gif)
 
 ### Usage
 
