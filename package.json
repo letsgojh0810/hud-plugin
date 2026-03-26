@@ -4,7 +4,7 @@
   "description": "Terminal HUD for Claude Code — real-time token usage, git status, project monitor",
   "type": "module",
   "bin": {
-    "claude-hud": "./bin/claude-hud"
+    "claude-hud": "./bin/claude-hud.js"
   },
   "keywords": [
     "claude",
