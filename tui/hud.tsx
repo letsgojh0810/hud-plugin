@@ -574,7 +574,10 @@ function App() {
     // Initial API usage fetch
     getUsage().then(setRateLimits).catch(() => {});
 
-    const onResize = () => setTermWidth(stdout?.columns ?? 80);
+    const onResize = () => {
+      process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+      setTermWidth(stdout?.columns ?? 80);
+    };
     stdout?.on('resize', onResize);
 
     const poll = setInterval(refresh, 3000);
@@ -602,7 +605,7 @@ function App() {
   }, []);
 
   useInput((input, key) => {
-    if (input === 'q') process.exit(0);
+    if (input === 'q' || input === 'ㅂ') process.exit(0);
 
     // Escape: close file viewer first, then quit
     if (key.escape) {
@@ -613,17 +616,17 @@ function App() {
     if (input === '1') { setTab(0); setScrollY(0); }
     if (input === '2') { setTab(1); setScrollY(0); }
     if (input === '3') { setTab(2); setScrollY(0); }
-    if (input === 'd') setDark(d => !d);
+    if (input === 'd' || input === 'ㅇ') setDark(d => !d);
 
     // r = manual refresh
-    if (input === 'r') {
+    if (input === 'r' || input === 'ㄱ') {
       refresh();
       setProject(null);
       setSelectedFile(null); setFileLines([]); setFileScroll(0);
       scanProject(cwd).then(p => { setProject(p); setTreeCursor(0); }).catch(() => {});
     }
 
-    if (input === 'j' || key.downArrow) {
+    if (input === 'j' || input === 'ㅓ' || key.downArrow) {
       if (tab === 1 && selectedFile) {
         setFileScroll(s => Math.min(s + 1, Math.max(0, fileLines.length - 5)));
       } else if (tab === 1) {
@@ -633,7 +636,7 @@ function App() {
         setScrollY(s => Math.min(s + 1, 20));
       }
     }
-    if (input === 'k' || key.upArrow) {
+    if (input === 'k' || input === 'ㅏ' || key.upArrow) {
       if (tab === 1 && selectedFile) {
         setFileScroll(s => Math.max(s - 1, 0));
       } else if (tab === 1) {
