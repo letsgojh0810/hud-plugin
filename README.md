@@ -8,7 +8,7 @@
 
 Claude Code로 작업할 때 토큰 사용량, git 상태, 파일 구조를 IDE나 별도 탭 없이 터미널 하나에서 확인할 수 있는 HUD입니다.
 
-![demo](./demo.gif)
+<img src="./demo.gif" width="700" alt="demo">
 
 ### 사용법
 
@@ -117,7 +117,7 @@ Claude Code를 한 번 실행하면 `~/.claude/.credentials.json`에 credentials
 
 A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser. No IDE, no extra tabs. Just a second terminal window.
 
-![demo](./demo.gif)
+<img src="./demo.gif" width="700" alt="demo">
 
 ### Usage
 
