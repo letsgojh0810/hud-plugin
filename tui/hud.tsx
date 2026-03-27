@@ -218,10 +218,13 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   const projectsDir = join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return [];
 
+  const targetDirName = cwd.replace(/\//g, '-');
+
   let latestFile: string | null = null;
   let latestMtime = 0;
   try {
     for (const projectHash of fs.readdirSync(projectsDir)) {
+      if (projectHash !== targetDirName) continue;
       const sessionDir = join(projectsDir, projectHash);
       if (!fs.statSync(sessionDir).isDirectory()) continue;
       for (const file of fs.readdirSync(sessionDir)) {
@@ -715,8 +718,8 @@ function App() {
   const cwd = process.env.CLAUDE_PROJECT_ROOT || process.cwd();
   const C = makeTheme(accent);
 
-  const [usage,      setUsage]      = useState<any>(readTokenUsage());
-  const [history,    setHistory]    = useState<any>(readTokenHistory());
+  const [usage,      setUsage]      = useState<any>(readTokenUsage(cwd));
+  const [history,    setHistory]    = useState<any>(readTokenHistory(cwd));
   const [git,        setGit]        = useState<any>(readGitInfo(cwd));
   const [project,    setProject]    = useState<ProjectInfo | null>(null);
   const [rateLimits, setRateLimits] = useState<any>(getUsageSync());
@@ -741,8 +744,8 @@ function App() {
   const [currentActivity,  setCurrentActivity]  = useState<string>('');
 
   const refresh = useCallback(() => {
-    setUsage(readTokenUsage());
-    setHistory(readTokenHistory());
+    setUsage(readTokenUsage(cwd));
+    setHistory(readTokenHistory(cwd));
     setGit(readGitInfo(cwd));
     setUpdatedAt(Date.now());
     getUsage().then(setRateLimits).catch(() => {});

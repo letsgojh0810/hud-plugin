@@ -34,15 +34,23 @@ function getContextWindow(model) {
   return 200000;
 }
 
-/** Find the most recently modified .jsonl session file */
-function findLatestSession() {
+/** Convert cwd to the Claude project directory name (/ replaced with -) */
+function cwdToProjectDir(cwd) {
+  return cwd.replace(/\//g, '-');
+}
+
+/** Find the most recently modified .jsonl session file for the given cwd */
+function findLatestSession(cwd) {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return null;
+
+  const targetDir = cwd ? cwdToProjectDir(cwd) : null;
 
   let latest = null;
   let latestMtime = 0;
 
-  const projects = fs.readdirSync(projectsDir);
+  const projects = fs.readdirSync(projectsDir)
+    .filter(p => !targetDir || p === targetDir);
   for (const proj of projects) {
     const projDir = path.join(projectsDir, proj);
 
@@ -66,12 +74,13 @@ function findLatestSession() {
   return latest;
 }
 
-/** Collect all JSONL lines across all sessions with their timestamps */
-function readAllLines() {
+/** Collect all JSONL lines for the given cwd (or all projects if no cwd) */
+function readAllLines(cwd) {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return [];
+  const targetDir = cwd ? cwdToProjectDir(cwd) : null;
   const result = [];
-  for (const proj of fs.readdirSync(projectsDir)) {
+  for (const proj of fs.readdirSync(projectsDir).filter(p => !targetDir || p === targetDir)) {
     const projDir = path.join(projectsDir, proj);
     let files = [];
     try { files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
@@ -94,8 +103,8 @@ function readAllLines() {
   return result;
 }
 
-export function readTokenHistory() {
-  const allLines = readAllLines();
+export function readTokenHistory(cwd) {
+  const allLines = readAllLines(cwd);
   const now = Date.now();
   const h5  = now - 5  * 60 * 60 * 1000;
   const wk  = now - 7  * 24 * 60 * 60 * 1000;
@@ -143,8 +152,8 @@ export function readTokenHistory() {
   return { last5h: acc5h, lastWeek: accWk, hourlyBuckets: buckets };
 }
 
-export function readTokenUsage() {
-  const sessionFile = findLatestSession();
+export function readTokenUsage(cwd) {
+  const sessionFile = findLatestSession(cwd);
   if (!sessionFile) {
     return empty();
   }
