@@ -22,3 +22,11 @@ Thumbs.db
 
 # OMC / Claude state
 .omc/
+CLAUDE.md
+
+# Lock files
+package-lock.json
+
+# Recording artifacts (keep only final demo.gif)
+demo.cast
+demo_raw.gif
