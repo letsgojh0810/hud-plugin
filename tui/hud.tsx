@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { render, Box, Text, useStdout, useInput } from 'ink';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, basename } from 'path';
 import fs from 'fs';
 import os from 'os';
 import { execSync } from 'child_process';
@@ -16,22 +16,33 @@ const { readTokenUsage, readTokenHistory } = await import(join(__dir, '../script
 const { readGitInfo } = await import(join(__dir, '../scripts/lib/git-info.mjs'));
 const { getUsage, getUsageSync } = await import(join(__dir, '../scripts/lib/usage-api.mjs'));
 
-// Clear terminal before starting
-process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+// Enter alternate screen buffer (like vim/htop — terminal never scrolls, header stays fixed)
+process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
+process.on('exit', () => process.stdout.write('\x1b[?1049l'));
+process.on('SIGINT', () => { process.stdout.write('\x1b[?1049l'); process.exit(0); });
+process.on('SIGTERM', () => { process.stdout.write('\x1b[?1049l'); process.exit(0); });
 
 const SESSION_START = Date.now();
 
 // ── Themes ─────────────────────────────────────────────────────────────────
-const DARK = {
-  brand: '#3182F6', text: '#E6EDF3', dim: '#8B949E', dimmer: '#6E7681',
+// Base is always dark. Only accent colors cycle with `d`.
+const BASE = {
+  text: '#E6EDF3', dim: '#8B949E', dimmer: '#6E7681',
   border: '#30363D', green: '#3FB950', yellow: '#D29922', red: '#F85149',
-  purple: '#A371F7', cyan: '#58A6FF',
 };
-const LIGHT = {
-  brand: '#3182F6', text: '#1F2328', dim: '#656D76', dimmer: '#8C959F',
-  border: '#D8DEE4', green: '#1A7F37', yellow: '#9A6700', red: '#CF222E',
-  purple: '#8250DF', cyan: '#0969DA',
-};
+
+const ACCENTS = [
+  { brand: '#3B82F6', cyan: '#60A5FA', purple: '#A78BFA' }, // blue
+  { brand: '#F43F5E', cyan: '#FB7185', purple: '#F9A8D4' }, // red
+  { brand: '#F59E0B', cyan: '#FCD34D', purple: '#FDE68A' }, // amber
+  { brand: '#10B981', cyan: '#34D399', purple: '#6EE7B7' }, // emerald
+  { brand: '#EC4899', cyan: '#F472B6', purple: '#F9A8D4' }, // pink
+] as const;
+
+type Theme = typeof BASE & typeof ACCENTS[number];
+function makeTheme(accentIdx: number): Theme {
+  return { ...BASE, ...ACCENTS[accentIdx] };
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const fmtNum = (n: number) =>
@@ -197,6 +208,62 @@ function getBranches(cwd: string): string[] {
   }
 }
 
+// ── Timeline ────────────────────────────────────────────────────────────────
+type TimelineEntry = {
+  time: string;
+  text: string;
+};
+
+async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
+  const projectsDir = join(os.homedir(), '.claude', 'projects');
+  if (!fs.existsSync(projectsDir)) return [];
+
+  let latestFile: string | null = null;
+  let latestMtime = 0;
+  try {
+    for (const projectHash of fs.readdirSync(projectsDir)) {
+      const sessionDir = join(projectsDir, projectHash);
+      if (!fs.statSync(sessionDir).isDirectory()) continue;
+      for (const file of fs.readdirSync(sessionDir)) {
+        if (!file.endsWith('.jsonl')) continue;
+        const filePath = join(sessionDir, file);
+        try {
+          const mtime = fs.statSync(filePath).mtimeMs;
+          if (mtime > latestMtime) { latestMtime = mtime; latestFile = filePath; }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  if (!latestFile) return [];
+
+  const lines = fs.readFileSync(latestFile, 'utf-8').split('\n').filter(Boolean);
+  const entries: TimelineEntry[] = [];
+
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+      if (obj.type !== 'user') continue;
+      const content = obj.message?.content;
+      const textBlock = Array.isArray(content)
+        ? content.find((b: any) => b.type === 'text')
+        : null;
+      const text: string = textBlock?.text ?? (typeof content === 'string' ? content : '');
+      if (!text.trim()) continue;
+
+      const ts: string = obj.timestamp ?? '';
+      let time = '';
+      if (ts) {
+        try { time = new Date(ts).toTimeString().slice(0, 5); } catch {}
+      }
+
+      entries.push({ time, text: text.replace(/\n/g, ' ').slice(0, 80) });
+    } catch {}
+  }
+
+  return entries.slice(-30);
+}
+
 // ── UI Components ──────────────────────────────────────────────────────────
 function Bar({ ratio, width, color, C }: { ratio: number; width: number; color: string; C: typeof DARK }) {
   const filled = Math.max(0, Math.min(width, Math.round(ratio * width)));
@@ -218,7 +285,7 @@ function Section({ title, children, C, accent }: { title: string; children: Reac
 }
 
 // ── Tab 1: TOKENS ──────────────────────────────────────────────────────────
-function TokensTab({ usage, history, rateLimits, termWidth, C }: any) {
+function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, C }: any) {
   const ctxPct   = usage.contextWindow > 0 ? usage.totalTokens / usage.contextWindow : 0;
   const ctxColor = ctxPct > 0.85 ? C.red : ctxPct > 0.65 ? C.yellow : C.brand;
   const ctxLabel = ctxPct > 0.85 ? 'WARN' : ctxPct > 0.65 ? 'MID' : 'OK';
@@ -330,6 +397,14 @@ function TokensTab({ usage, history, rateLimits, termWidth, C }: any) {
           </Section>
         );
       })()}
+
+      {/* Current activity */}
+      {currentActivity && (
+        <Box borderStyle="single" borderColor={C.border} paddingX={1}>
+          <Text color={C.dimmer}>now  </Text>
+          <Text color={C.brand}>{currentActivity.slice(0, termWidth - 12)}</Text>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -599,18 +674,46 @@ function GitTab({ git, C, termWidth, branchMode, branchList, branchCursor }: any
   );
 }
 
+// ── Tab 4: TIMELINE ────────────────────────────────────────────────────────
+const TIMELINE_VISIBLE = 10;
+
+function TimelineTab({ timeline, timelineScroll, C }: any) {
+  const entries = timeline as TimelineEntry[];
+  const visible = entries.slice(timelineScroll, timelineScroll + TIMELINE_VISIBLE);
+  return (
+    <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
+      <Text color={C.dimmer} bold>▸ <Text color={C.text}>SESSION HISTORY</Text>
+        {entries.length > 0 && <Text color={C.dimmer}>  {timelineScroll + 1}–{Math.min(timelineScroll + TIMELINE_VISIBLE, entries.length)} / {entries.length}</Text>}
+      </Text>
+      <Box flexDirection="column" marginTop={1}>
+        {entries.length === 0 && <Text color={C.dimmer}>  no messages yet</Text>}
+        {visible.map((entry, i) => (
+          <Box key={i} marginBottom={1}>
+            <Box width={6}><Text color={C.dimmer}>{entry.time}</Text></Box>
+            <Text color={C.text}>{entry.text}</Text>
+          </Box>
+        ))}
+        {entries.length > TIMELINE_VISIBLE && (
+          <Text color={C.dimmer}>  [j/k] scroll</Text>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────
 function App() {
   const { stdout } = useStdout();
-  const [termWidth, setTermWidth] = useState(stdout?.columns ?? 80);
+  const [termWidth,  setTermWidth]  = useState(stdout?.columns ?? 80);
+  const [termHeight, setTermHeight] = useState(stdout?.rows    ?? 24);
   const [tab,      setTab]        = useState(0);            // 0=TOKENS 1=PROJECT 2=GIT
-  const [dark,     setDark]       = useState(true);
+  const [accent,   setAccent]     = useState(3);            // 0=blue 1=red 2=amber 3=emerald 4=pink
   const [scrollY,  setScrollY]    = useState(0);
   const [tick,     setTick]       = useState(0);
   const [updatedAt, setUpdatedAt] = useState(Date.now());
 
   const cwd = process.env.CLAUDE_PROJECT_ROOT || process.cwd();
-  const C = dark ? DARK : LIGHT;
+  const C = makeTheme(accent);
 
   const [usage,      setUsage]      = useState<any>(readTokenUsage());
   const [history,    setHistory]    = useState<any>(readTokenHistory());
@@ -632,12 +735,24 @@ function App() {
   const [branchList,   setBranchList]   = useState<string[]>([]);
   const [branchCursor, setBranchCursor] = useState(0);
 
+  // Timeline state
+  const [timeline,         setTimeline]         = useState<TimelineEntry[]>([]);
+  const [timelineScroll,   setTimelineScroll]   = useState(0);
+  const [currentActivity,  setCurrentActivity]  = useState<string>('');
+
   const refresh = useCallback(() => {
     setUsage(readTokenUsage());
     setHistory(readTokenHistory());
     setGit(readGitInfo(cwd));
     setUpdatedAt(Date.now());
     getUsage().then(setRateLimits).catch(() => {});
+    readSessionTimeline(cwd).then(entries => {
+      setTimeline(entries);
+      if (entries.length > 0) {
+        const last = entries[entries.length - 1];
+        setCurrentActivity(last.text);
+      }
+    }).catch(() => {});
   }, [cwd]);
 
   useEffect(() => {
@@ -645,10 +760,19 @@ function App() {
     scanProject(cwd).then(setProject).catch(() => {});
     // Initial API usage fetch
     getUsage().then(setRateLimits).catch(() => {});
+    // Initial timeline load
+    readSessionTimeline(cwd).then(entries => {
+      setTimeline(entries);
+      if (entries.length > 0) {
+        const last = entries[entries.length - 1];
+        setCurrentActivity(last.text);
+      }
+    }).catch(() => {});
 
     const onResize = () => {
       process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
       setTermWidth(stdout?.columns ?? 80);
+      setTermHeight(stdout?.rows ?? 24);
     };
     stdout?.on('resize', onResize);
 
@@ -727,7 +851,8 @@ function App() {
     if (input === '1') { setTab(0); setScrollY(0); }
     if (input === '2') { setTab(1); setScrollY(0); }
     if (input === '3') { setTab(2); setScrollY(0); }
-    if (input === 'd' || input === 'ㅇ') setDark(d => !d);
+    if (input === '4') { setTab(3); setScrollY(0); }
+    if (input === 'd' || input === 'ㅇ') setAccent(a => (a + 1) % ACCENTS.length);
 
     // r = manual refresh
     if (input === 'r' || input === 'ㄱ') {
@@ -743,6 +868,8 @@ function App() {
       } else if (tab === 1) {
         const flat = project?.dirTree ? flattenTree(project.dirTree, 0, treeExpanded) : [];
         setTreeCursor(c => Math.min(c + 1, flat.length - 1));
+      } else if (tab === 3) {
+        setTimelineScroll(s => Math.min(s + 1, Math.max(0, timeline.length - 10)));
       } else {
         setScrollY(s => Math.min(s + 1, 20));
       }
@@ -752,6 +879,8 @@ function App() {
         setFileScroll(s => Math.max(s - 1, 0));
       } else if (tab === 1) {
         setTreeCursor(c => Math.max(c - 1, 0));
+      } else if (tab === 3) {
+        setTimelineScroll(s => Math.max(s - 1, 0));
       } else {
         setScrollY(s => Math.max(s - 1, 0));
       }
@@ -798,7 +927,7 @@ function App() {
     }
   });
 
-  const TAB_NAMES = ['TOKENS', 'PROJECT', 'GIT'];
+  const TAB_NAMES = ['TOKENS', 'PROJECT', 'GIT', 'TIMELINE'];
   const since = fmtSince(Date.now() - updatedAt);
   const uptime = fmtSince(SESSION_START - Date.now() + (Date.now() - SESSION_START));  // forces tick dep
   void tick;
@@ -826,24 +955,39 @@ function App() {
         </Box>
       </Box>
 
-      {/* ── Content (with scroll offset) ── */}
-      <Box flexDirection="column" marginTop={-scrollY}>
-        {tab === 0 && <TokensTab  usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} C={C} />}
-        {tab === 1 && <ProjectTab info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} git={git} C={C} />}
-        {tab === 2 && <GitTab     git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
-      </Box>
+      {/* ── Content: fixed height so header/footer never get pushed off screen ── */}
+      {(() => {
+        // header ~3 rows, footer key row ~1, footer dir row ~3 = 7 total chrome
+        const contentH = Math.max(4, termHeight - 7);
+        return (
+          <Box flexDirection="column" height={contentH} overflow="hidden">
+            <Box flexDirection="column" marginTop={-scrollY}>
+              {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} C={C} />}
+              {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} git={git} C={C} />}
+              {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
+              {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
+            </Box>
+          </Box>
+        );
+      })()}
 
-      {/* ── Footer ── */}
+      {/* ── Footer row 1: keys ── */}
       <Box justifyContent="space-between" paddingX={1}>
         <Box>
           <Text color={C.green}>● </Text>
-          <Text color={C.dimmer}>[1/2/3] tabs  </Text>
+          <Text color={C.dimmer}>[1/2/3/4] tabs  </Text>
           <Text color={tab === 1 ? C.brand : C.dimmer}>[j/k] {tab === 1 ? 'tree' : 'scroll'}  </Text>
           <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? (selectedFile ? '[esc/←] close  [j/k] scroll  ' : '[enter] open  [→←] expand  ') : ''}</Text>
           {tab === 2 && !branchMode && <Text color={C.brand}>[b] branch  </Text>}
-          <Text color={C.dimmer}>[r] refresh  [d] theme  [q] quit</Text>
+          <Text color={C.dimmer}>[r] refresh  [d] color  [q] quit</Text>
         </Box>
         <Text color={C.dimmer}>↻ {since}</Text>
+      </Box>
+
+      {/* ── Footer row 2: current dir ── */}
+      <Box paddingX={1} borderStyle="single" borderColor={C.brand}>
+        <Text color={C.brand} bold>◆ </Text>
+        <Text color={C.text} bold>~/{basename(cwd)}</Text>
       </Box>
 
     </Box>
