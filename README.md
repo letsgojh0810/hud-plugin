@@ -47,7 +47,7 @@ tmux split-window -h "npx claude-code-hud"
 
 **1 TOKENS 탭**
 - 컨텍스트 윈도우 사용량 게이지 (OK / MID / WARN) — 사용량에 따라 헤더 색상 변경
-- Anthropic API 기반 5h / 주간 사용률 (실제 값, 추정치 아님) — `1h 23m` 형식으로 리셋까지 남은 시간 표시
+- Anthropic API 기반 5h / 주간 사용률 — `1h 23m` 형식으로 리셋까지 남은 시간 표시
 - input / output / cache-read / cache-write 토큰 분류
 - 세션 output 통계 (total / avg / peak)
 - `now` — 현재 진행 중인 작업 (마지막 사용자 메시지) 한 줄 표시
