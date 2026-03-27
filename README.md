@@ -6,7 +6,7 @@
 
 ## 한국어
 
-Claude Code로 작업할 때 토큰 사용량, git 상태, 파일 구조를 IDE나 별도 탭 없이 터미널 하나에서 확인할 수 있는 HUD입니다.
+Claude Code로 작업할 때 토큰 사용량, git 상태, 파일 구조, 세션 히스토리를 IDE나 별도 툴 없이 터미널 하나에서 확인할 수 있는 HUD입니다.
 
 <img src="./demo.gif" width="700" alt="demo">
 
@@ -22,6 +22,8 @@ claude                           npx claude-code-hud
 (Claude Code 작업 중...)          (HUD 실시간 표시)
 ```
 
+<img src="./capture.png" width="700" alt="side-by-side terminals">
+
 HUD는 현재 디렉토리를 기준으로 토큰, git, 프로젝트 정보를 자동으로 인식합니다.
 
 ```bash
@@ -33,12 +35,12 @@ tmux split-window -h "npx claude-code-hud"
 ### 설치
 
 ```bash
-# 설치 없이 바로 실행
-npx claude-code-hud
+# 방법1. 전역 설치 (권장)
+> npm install -g claude-code-hud
+> claude-hud
 
-# 전역 설치
-npm install -g claude-code-hud
-claude-hud
+# 방법2. 설치 없이 바로 실행
+> npx claude-code-hud
 ```
 
 ### 기능
@@ -48,6 +50,7 @@ claude-hud
 - Anthropic API 기반 5h / 주간 사용률 (실제 값, 추정치 아님) — `1h 23m` 형식으로 리셋까지 남은 시간 표시
 - input / output / cache-read / cache-write 토큰 분류
 - 세션 output 통계 (total / avg / peak)
+- `now` — 현재 진행 중인 작업 (마지막 사용자 메시지) 한 줄 표시
 
 **2 PROJECT 탭 — 인터랙티브 파일 브라우저**
 - 디렉토리 트리 (펼치기/접기)
@@ -72,16 +75,20 @@ claude-hud
 - 최근 커밋 히스토리
 - **브랜치 전환** — `b` 키로 로컬 브랜치 목록 표시, 선택해서 바로 checkout
 
+**4 TIMELINE 탭**
+- 현재 세션에서 사용자가 입력한 메시지 히스토리
+- 시간 + 내용 표시, 10개씩 j/k 스크롤
+
 ### 키보드 단축키
 
 | 키 | 동작 |
 |----|------|
-| `1` `2` `3` | 탭 전환 |
+| `1` `2` `3` `4` | 탭 전환 |
 | `j` / `k` | 스크롤 / 트리 이동 |
 | `→` / `Enter` | 디렉토리 펼치기 / 파일 열기 |
 | `←` / `Esc` | 접기 / 소스 뷰어 닫기 |
 | `b` | 브랜치 전환 (GIT 탭) |
-| `d` | 다크 / 라이트 모드 전환 |
+| `d` | 액센트 색상 변경 (blue → red → amber → green → pink) |
 | `r` | 수동 새로고침 |
 | `q` | 종료 |
 
@@ -115,7 +122,7 @@ Claude Code를 한 번 실행하면 `~/.claude/.credentials.json`에 credentials
 
 ## English
 
-A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, and interactive project file browser. No IDE, no extra tabs. Just a second terminal window.
+A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, interactive project file browser, and session history. No IDE, no extra tabs. Just a second terminal window.
 
 <img src="./demo.gif" width="700" alt="demo">
 
@@ -131,6 +138,8 @@ claude                           npx claude-code-hud
 (working with Claude Code)       (HUD live display)
 ```
 
+<img src="./capture.png" width="700" alt="side-by-side terminals">
+
 ```bash
 # tmux split pane
 cd ~/my-project
@@ -140,13 +149,12 @@ tmux split-window -h "npx claude-code-hud"
 ### Installation
 
 ```bash
-# No install — run directly
-npx claude-code-hud
+# Option 1. Global install (recommended)
+> npm install -g claude-code-hud
+> claude-hud
 
-# Global install
-npm install -g claude-code-hud
-claude-hud
-
+# Option 2. Run directly without install
+> npx claude-code-hud
 ```
 
 ### Features
@@ -156,6 +164,7 @@ claude-hud
 - Real 5h / weekly usage from Anthropic OAuth API — not estimates. Reset time shown as `1h 23m`
 - Input / output / cache-read / cache-write breakdown
 - Session output stats: total / avg / peak per hour
+- `now` line — last user message (current task at a glance)
 
 **2 PROJECT tab — interactive file browser**
 - Navigable directory tree with expand/collapse
@@ -164,6 +173,15 @@ claude-hud
 - Package dependency tree from `package.json`
 - API endpoint detection (GET / POST / PUT / DELETE / PATCH)
 
+```
+▸ TREE                          │ ▸ SOURCE  src/index.ts
+  ▼ src/            23f         │    1  import React from 'react'
+    ▼ components/    8f         │    2  import { render } from 'ink'
+      Header.tsx  M             │    3
+    ▶ hooks/         4f         │    4  render(<App />)
+  ▶ scripts/         6f         │    …  [j/k] scroll  [esc] close
+```
+
 **3 GIT tab**
 - Branch status, ahead/behind remote
 - Changed file list (MOD / ADD / DEL) with real `+N -N` diff counts
@@ -171,16 +189,20 @@ claude-hud
 - Recent commit history
 - **Branch switcher** — press `b` to list local branches and checkout instantly
 
+**4 TIMELINE tab**
+- User message history from the current Claude Code session
+- Timestamped entries, 10 per page, j/k to scroll
+
 ### Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
-| `1` `2` `3` | Switch tabs |
+| `1` `2` `3` `4` | Switch tabs |
 | `j` / `k` | Scroll / move tree cursor |
 | `→` / `Enter` | Expand dir / open file |
 | `←` / `Esc` | Collapse / close source viewer |
 | `b` | Branch switcher (GIT tab) |
-| `d` | Toggle dark / light mode |
+| `d` | Cycle accent color (blue → red → amber → green → pink) |
 | `r` | Manual refresh |
 | `q` | Quit |
 
@@ -206,6 +228,7 @@ Run `claude` once to authenticate — credentials are saved to `~/.claude/.crede
 ### How it works
 
 - **Token data**: Watches `~/.claude/projects/*/sessions/*.jsonl` with chokidar — updates instantly on each Claude response
+- **Timeline**: Reads the same JSONL files, filters `type === "user"` entries for message history
 - **Usage window**: Calls `api.anthropic.com/api/oauth/usage` using local Claude credentials — cached 5 min
 - **Git**: Polls every 3 seconds
 - **Project scan**: One-time fast-glob scan on startup, `r` to rescan
