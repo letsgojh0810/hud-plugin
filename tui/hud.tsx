@@ -95,13 +95,13 @@ type ProjectInfo = {
   dirTree: DirNode;
 };
 
-async function scanProject(cwd: string): Promise<ProjectInfo> {
+async function scanProject(cwd: string, deep = 8): Promise<ProjectInfo> {
   const { default: fg } = await import('fast-glob');
 
   // File counts by extension
   const files: string[] = (await fg('**/*', {
     cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**', '**/__pycache__/**', '**/target/**', '**/.next/**', '**/.nuxt/**'],
-    onlyFiles: true, dot: false, deep: 8,
+    onlyFiles: true, dot: false, deep,
   })).slice(0, 3000);
 
   const byExt: Record<string, number> = {};
@@ -155,7 +155,7 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
 
   // Endpoint detection
   const srcFiles: string[] = await fg('**/*.{ts,tsx,js,jsx,py,java,go}', {
-    cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/*.test.*', '**/*.spec.*'], onlyFiles: true, deep: 8,
+    cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/*.test.*', '**/*.spec.*'], onlyFiles: true, deep,
   });
   const endpoints: Record<string, number> = { GET: 0, POST: 0, PUT: 0, DELETE: 0, PATCH: 0 };
   const PATTERNS: [string, RegExp][] = [
@@ -797,7 +797,11 @@ function App() {
 
   useEffect(() => {
     // Scan project once
-    scanProject(cwd).then(p => { setProject(p); setLoading(false); }).catch(() => { setLoading(false); });
+    // Quick shallow scan first → show UI immediately
+    scanProject(cwd, 2).then(p => { setProject(p); setLoading(false); })
+      .catch(() => { setLoading(false); });
+    // Full deep scan in background → update silently
+    scanProject(cwd, 8).then(p => { setProject(p); }).catch(() => {});
     // Initial API usage fetch
     getUsage().then(setRateLimits).catch(() => {});
     // Initial timeline load
@@ -912,7 +916,7 @@ function App() {
       refresh();
       setProject(null);
       setSelectedFile(null); setFileLines([]); setFileScroll(0);
-      scanProject(cwd).then(p => { setProject(p); setTreeCursor(0); }).catch(() => {});
+      scanProject(cwd, 8).then(p => { setProject(p); setTreeCursor(0); }).catch(() => {});
     }
 
     if (input === 'j' || input === 'ㅓ' || key.downArrow) {
