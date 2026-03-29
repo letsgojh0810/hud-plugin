@@ -109,9 +109,11 @@ export function readTokenHistory(cwd) {
   const h5  = now - 5  * 60 * 60 * 1000;
   const wk  = now - 7  * 24 * 60 * 60 * 1000;
   const h12 = now - 12 * 60 * 60 * 1000;
+  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+  const todayStart = todayMidnight.getTime();
 
   const empty = () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
-  const acc5h = empty(), accWk = empty();
+  const acc5h = empty(), accWk = empty(), accToday = empty();
 
   // 12 hourly buckets (index 0 = oldest, 11 = most recent)
   const buckets = Array(12).fill(0);
@@ -135,8 +137,9 @@ export function readTokenHistory(cwd) {
       acc.cost.cacheWrite += (cw  / M) * pricing.cacheWrite;
     };
 
-    if (ts >= wk) { addTo(accWk); }
-    if (ts >= h5) { addTo(acc5h); }
+    if (ts >= wk)         { addTo(accWk); }
+    if (ts >= h5)         { addTo(acc5h); }
+    if (ts >= todayStart) { addTo(accToday); }
 
     if (ts >= h12) {
       const hoursAgo = (now - ts) / (60 * 60 * 1000);
@@ -145,11 +148,11 @@ export function readTokenHistory(cwd) {
     }
   }
 
-  [acc5h, accWk].forEach(acc => {
+  [acc5h, accWk, accToday].forEach(acc => {
     acc.cost.total = acc.cost.input + acc.cost.output + acc.cost.cacheRead + acc.cost.cacheWrite;
   });
 
-  return { last5h: acc5h, lastWeek: accWk, hourlyBuckets: buckets };
+  return { last5h: acc5h, lastWeek: accWk, today: accToday, hourlyBuckets: buckets };
 }
 
 export function readTokenUsage(cwd) {

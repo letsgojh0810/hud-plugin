@@ -248,6 +248,8 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
       const obj = JSON.parse(line);
       if (obj.type !== 'user') continue;
       const content = obj.message?.content;
+      // Skip tool_result messages (not direct user prompts)
+      if (Array.isArray(content) && content.some((b: any) => b.type === 'tool_result')) continue;
       const textBlock = Array.isArray(content)
         ? content.find((b: any) => b.type === 'text')
         : null;
@@ -401,6 +403,20 @@ function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, C }
         );
       })()}
 
+      {/* Today summary + sparkline */}
+      <Section title="TODAY" C={C}>
+        <Box>
+          <Text color={C.dimmer}>in  </Text>
+          <Text color={C.brand}  bold>{fmtNum(history.today?.inputTokens ?? 0)}</Text>
+          <Text color={C.dimmer}>   out  </Text>
+          <Text color={C.purple} bold>{fmtNum(history.today?.outputTokens ?? 0)}</Text>
+          <Text color={C.dimmer}>   cache  </Text>
+          <Text color={C.cyan}   bold>{fmtNum((history.today?.cacheReadTokens ?? 0) + (history.today?.cacheWriteTokens ?? 0))}</Text>
+          <Text color={C.dimmer}>   </Text>
+          <Text color={costColor(history.today?.cost?.total ?? 0, C)} bold>{fmtCost(history.today?.cost?.total ?? 0)}</Text>
+        </Box>
+      </Section>
+
       {/* Current activity */}
       {currentActivity && (
         <Box borderStyle="single" borderColor={C.border} paddingX={1}>
@@ -413,7 +429,7 @@ function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, C }
 }
 
 // ── Tab 2: PROJECT ─────────────────────────────────────────────────────────
-function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, fileScroll, termWidth, git, C }: any) {
+function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, fileScroll, termWidth, contentH, git, C }: any) {
   if (!info) return (
     <Box borderStyle="single" borderColor={C.border} paddingX={1}>
       <Text color={C.dimmer}>scanning project…</Text>
@@ -439,16 +455,26 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
     return result;
   }
 
-  const flatNodes: FlatNode[] = info.dirTree ? flatNodes_inner(info.dirTree, 0) : [];
+  const ch = contentH ?? 30;
+  const hasFile = !!selectedFile;
+
+  // Budget: summary=3, tree border+header+marginTop=4, packages≈14 when shown
+  const showPackages = !hasFile && ch >= 28;
+  const packagesBudget = showPackages ? 14 : 0;
+  const maxTreeRows = Math.max(4, ch - 7 - packagesBudget);
+  const treePanelH = Math.max(4, ch - 3 - packagesBudget);
+  const VISIBLE_LINES = Math.max(4, ch - 8);
+
+  // Flatten nodes
+  const allFlatNodes: FlatNode[] = info.dirTree ? flatNodes_inner(info.dirTree, 0) : [];
+  const flatNodes = allFlatNodes.slice(0, maxTreeRows);
   const safeCursor = Math.min(treeCursor, Math.max(0, flatNodes.length - 1));
 
   const totalEndpoints = Object.values(info.endpoints as Record<string, number>).reduce((a: number, b: number) => a + b, 0);
 
   // Split layout when file is open
-  const hasFile = !!selectedFile;
   const TREE_W = hasFile ? Math.max(28, Math.floor(termWidth * 0.36)) : termWidth - 2;
   const SOURCE_W = hasFile ? termWidth - TREE_W - 5 : 0;
-  const VISIBLE_LINES = 22;
 
   // Git changed file sets
   const gitModified = new Set<string>([...(git?.modified ?? []), ...(git?.added ?? []), ...(git?.deleted ?? [])]);
@@ -463,9 +489,9 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
   };
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={ch}>
       {/* Summary bar */}
-      <Box borderStyle="single" borderColor={C.border} paddingX={1}>
+      <Box borderStyle="single" borderColor={C.border} paddingX={1} height={3}>
         <Text color={C.text} bold>{info.totalFiles} files</Text>
         <Text color={C.dim}>  │  </Text>
         <Text color={C.text} bold>{info.packages.filter((p: any) => p.depth === 0).length} pkgs</Text>
@@ -477,10 +503,10 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
       </Box>
 
       {/* Main area: tree + optional source */}
-      <Box flexDirection="row">
+      <Box flexDirection="row" height={treePanelH}>
 
         {/* ── Tree panel ── */}
-        <Box flexDirection="column" borderStyle="single" borderColor={hasFile ? C.brand : C.border} paddingX={1} width={TREE_W}>
+        <Box flexDirection="column" borderStyle="single" borderColor={hasFile ? C.brand : C.border} paddingX={1} width={TREE_W} height={treePanelH}>
           <Text color={C.dimmer} bold>▸ <Text color={C.text}>TREE</Text></Text>
           <Box marginTop={1} flexDirection="column">
           {flatNodes.length === 0 && <Text color={C.dimmer}>  (empty)</Text>}
@@ -496,7 +522,7 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
                 <Box key={`d_${fn.node.path}_${idx}`}>
                   <Text color={C.dimmer}>{indent}</Text>
                   <Text color={isSelected ? C.brand : C.dimmer}>{expIcon}</Text>
-                  <Text color={nameColor} bold={isSelected}>{fn.node.name}/</Text>
+                  <Text color={nameColor} bold={isSelected} wrap="truncate">{fn.node.name}/</Text>
                   <Text color={C.dimmer}>  {fn.node.totalFiles}f</Text>
                 </Box>
               );
@@ -513,7 +539,7 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
                 <Box key={`f_${fn.filePath}_${idx}`}>
                   <Text color={C.dimmer}>{indent}</Text>
                   <Text color={isSelected ? C.brand : C.dimmer}>{isOpen ? '▶ ' : '  '}</Text>
-                  <Text color={fileColor} bold={isSelected || isOpen}>{fn.fileName}</Text>
+                  <Text color={fileColor} bold={isSelected || isOpen} wrap="truncate">{fn.fileName}</Text>
                   {gitBadge ? <Text color={gitColor!} bold>{gitBadge}</Text> : null}
                 </Box>
               );
@@ -524,7 +550,7 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
 
         {/* ── Source viewer panel ── */}
         {hasFile && (
-          <Box flexDirection="column" borderStyle="single" borderColor={C.brand} paddingX={1} width={SOURCE_W}>
+          <Box flexDirection="column" borderStyle="single" borderColor={C.brand} paddingX={1} width={SOURCE_W} height={treePanelH}>
             <Text color={C.dimmer} bold>▸ <Text color={C.text}>SOURCE  <Text color={C.dim}>{selectedFile}</Text></Text></Text>
             <Box marginTop={1} flexDirection="column">
             {(fileLines as string[]).slice(fileScroll, fileScroll + VISIBLE_LINES).map((line, i) => {
@@ -536,7 +562,7 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
                     <Text color={C.dimmer}>{lineNo}</Text>
                   </Box>
                   <Text color={C.dimmer}>  </Text>
-                  <Text color={C.text}>{truncated}</Text>
+                  <Text color={C.text} wrap="truncate">{truncated}</Text>
                 </Box>
               );
             })}
@@ -549,8 +575,8 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
       </Box>
 
       {/* Packages (hidden when file open to save space) */}
-      {!hasFile && (
-        <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
+      {showPackages && (
+        <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1} height={packagesBudget}>
           <Text color={C.dimmer} bold>▸ <Text color={C.text}>PACKAGES</Text></Text>
           <Box marginTop={1} flexDirection="column">
           {info.packages.slice(0, 10).map((p: any, i: number) => {
@@ -733,6 +759,17 @@ function App() {
   const [fileLines,    setFileLines]    = useState<string[]>([]);
   const [fileScroll,   setFileScroll]   = useState(0);
 
+  // Help overlay state
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Token warning blink state
+  const [blinkOn, setBlinkOn] = useState(true);
+
+  // Loading spinner state
+  const [loading,   setLoading]   = useState(true);
+  const [spinFrame, setSpinFrame] = useState(0);
+  const SPIN = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+
   // Branch switcher state
   const [branchMode,   setBranchMode]   = useState(false);
   const [branchList,   setBranchList]   = useState<string[]>([]);
@@ -760,7 +797,7 @@ function App() {
 
   useEffect(() => {
     // Scan project once
-    scanProject(cwd).then(setProject).catch(() => {});
+    scanProject(cwd).then(p => { setProject(p); setLoading(false); }).catch(() => { setLoading(false); });
     // Initial API usage fetch
     getUsage().then(setRateLimits).catch(() => {});
     // Initial timeline load
@@ -789,11 +826,15 @@ function App() {
           depth: 2, persistent: true, ignoreInitial: true,
           ignored: (p: string) => !p.endsWith('.jsonl'),
         });
-        watcher.on('change', refresh);
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+        watcher.on('change', () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(refresh, 800);
+        });
       });
     }
 
-    const tickInterval = setInterval(() => setTick(t => t + 1), 1000);
+    const tickInterval = setInterval(() => setTick(t => t + 1), 5000);
 
     return () => {
       stdout?.off('resize', onResize);
@@ -803,7 +844,16 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!loading) return;
+    const id = setInterval(() => setSpinFrame(f => f + 1), 80);
+    return () => clearInterval(id);
+  }, [loading]);
+
   useInput((input, key) => {
+    if (input === '?') { setShowHelp(h => !h); return; }
+    if (key.escape && showHelp) { setShowHelp(false); return; }
+
     // Branch switcher intercepts input when active
     if (branchMode) {
       if (input === 'j' || key.downArrow) {
@@ -935,11 +985,28 @@ function App() {
   const uptime = fmtSince(SESSION_START - Date.now() + (Date.now() - SESSION_START));  // forces tick dep
   void tick;
 
+  const ctxPct = usage.contextWindow > 0 ? usage.totalTokens / usage.contextWindow : 0;
+
+  useEffect(() => {
+    if (ctxPct <= 0.85) { setBlinkOn(true); return; }
+    const id = setInterval(() => setBlinkOn(b => !b), 600);
+    return () => clearInterval(id);
+  }, [ctxPct > 0.85]);
+
+  if (termWidth < 60 || termHeight < 15) {
+    return (
+      <Box width={termWidth} height={termHeight} alignItems="center" justifyContent="center" flexDirection="column">
+        <Text color={C.yellow} bold>⚠ terminal too small</Text>
+        <Text color={C.dimmer}>{termWidth}×{termHeight}  —  min 60×15</Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={termHeight}>
 
       {/* ── Header / Tab bar ── */}
-      <Box borderStyle="single" borderColor={usage.contextWindow > 0 && usage.totalTokens / usage.contextWindow > 0.85 ? C.red : usage.contextWindow > 0 && usage.totalTokens / usage.contextWindow > 0.65 ? C.yellow : C.brand} paddingX={1} justifyContent="space-between">
+      <Box height={3} borderStyle="single" borderColor={ctxPct > 0.85 ? (blinkOn ? C.red : C.border) : ctxPct > 0.65 ? C.yellow : C.brand} paddingX={1} justifyContent="space-between">
         <Box>
           <Text color={C.brand} bold>◆ HUD</Text>
           {TAB_NAMES.map((name, i) => (
@@ -964,31 +1031,53 @@ function App() {
         const contentH = Math.max(4, termHeight - 7);
         return (
           <Box flexDirection="column" height={contentH} overflow="hidden">
-            <Box flexDirection="column" marginTop={-scrollY}>
-              {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} C={C} />}
-              {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} git={git} C={C} />}
-              {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
-              {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
-            </Box>
+            {showHelp ? (
+              <Box flexDirection="column" borderStyle="round" borderColor={C.brand} paddingX={2} paddingY={1}>
+                <Text color={C.brand} bold>  Keyboard Shortcuts</Text>
+                <Text> </Text>
+                <Text><Text color={C.dim}>  1 / 2 / 3 / 4    </Text><Text color={C.text}>switch tabs</Text></Text>
+                <Text><Text color={C.dim}>  j / k            </Text><Text color={C.text}>scroll / tree move</Text></Text>
+                <Text><Text color={C.dim}>  → / Enter        </Text><Text color={C.text}>expand dir / open file</Text></Text>
+                <Text><Text color={C.dim}>  ← / Esc          </Text><Text color={C.text}>collapse / close</Text></Text>
+                <Text><Text color={C.dim}>  b                </Text><Text color={C.text}>branch switcher (GIT tab)</Text></Text>
+                <Text><Text color={C.dim}>  d                </Text><Text color={C.text}>cycle accent color</Text></Text>
+                <Text><Text color={C.dim}>  r                </Text><Text color={C.text}>refresh</Text></Text>
+                <Text><Text color={C.dim}>  q / Esc          </Text><Text color={C.text}>quit</Text></Text>
+                <Text><Text color={C.dim}>  ?                </Text><Text color={C.text}>toggle this help</Text></Text>
+                <Text> </Text>
+                <Text color={C.dimmer}>  Korean: ㅓ/ㅏ (j/k)  ㅇ (d)  ㄱ (r)  ㅂ (q)  ㅠ (b)</Text>
+              </Box>
+            ) : loading ? (
+              <Box height={contentH} alignItems="center" justifyContent="center">
+                <Text color={C.brand} bold>{SPIN[spinFrame % SPIN.length]} scanning project…</Text>
+              </Box>
+            ) : (
+              <Box flexDirection="column" height={contentH} marginTop={-scrollY}>
+                {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} C={C} />}
+                {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} contentH={contentH - 1} git={git} C={C} />}
+                {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
+                {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
+              </Box>
+            )}
           </Box>
         );
       })()}
 
       {/* ── Footer row 1: keys ── */}
-      <Box justifyContent="space-between" paddingX={1}>
+      <Box height={1} justifyContent="space-between" paddingX={1}>
         <Box>
           <Text color={C.green}>● </Text>
           <Text color={C.dimmer}>[1/2/3/4] tabs  </Text>
           <Text color={tab === 1 ? C.brand : C.dimmer}>[j/k] {tab === 1 ? 'tree' : 'scroll'}  </Text>
-          <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? (selectedFile ? '[esc/←] close  [j/k] scroll  ' : '[enter] open  [→←] expand  ') : ''}</Text>
+          <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? (selectedFile ? '[esc] close  ' : '[↵/→←] open  ') : ''}</Text>
           {tab === 2 && !branchMode && <Text color={C.brand}>[b] branch  </Text>}
-          <Text color={C.dimmer}>[r] refresh  [d] color  [q] quit</Text>
+          <Text color={C.dimmer}>[r] refresh  [d] color  [?] help  [q] quit</Text>
         </Box>
         <Text color={C.dimmer}>↻ {since}</Text>
       </Box>
 
       {/* ── Footer row 2: current dir ── */}
-      <Box paddingX={1} borderStyle="single" borderColor={C.brand}>
+      <Box height={3} paddingX={1} borderStyle="single" borderColor={C.brand}>
         <Text color={C.brand} bold>◆ </Text>
         <Text color={C.text} bold>~/{basename(cwd)}</Text>
       </Box>
