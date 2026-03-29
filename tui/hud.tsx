@@ -99,10 +99,10 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
   const { default: fg } = await import('fast-glob');
 
   // File counts by extension
-  const files: string[] = await fg('**/*', {
-    cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'],
-    onlyFiles: true, dot: false,
-  });
+  const files: string[] = (await fg('**/*', {
+    cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**', '**/__pycache__/**', '**/target/**', '**/.next/**', '**/.nuxt/**'],
+    onlyFiles: true, dot: false, deep: 8,
+  })).slice(0, 3000);
 
   const byExt: Record<string, number> = {};
   for (const f of files) {
@@ -155,7 +155,7 @@ async function scanProject(cwd: string): Promise<ProjectInfo> {
 
   // Endpoint detection
   const srcFiles: string[] = await fg('**/*.{ts,tsx,js,jsx,py,java,go}', {
-    cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/*.test.*', '**/*.spec.*'], onlyFiles: true,
+    cwd, ignore: ['**/node_modules/**', '**/.git/**', '**/*.test.*', '**/*.spec.*'], onlyFiles: true, deep: 8,
   });
   const endpoints: Record<string, number> = { GET: 0, POST: 0, PUT: 0, DELETE: 0, PATCH: 0 };
   const PATTERNS: [string, RegExp][] = [
