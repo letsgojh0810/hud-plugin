@@ -50,7 +50,8 @@ tmux split-window -h "npx claude-code-hud"
 - Anthropic API 기반 5h / 주간 사용률 — `1h 23m` 형식으로 리셋까지 남은 시간 표시
 - input / output / cache-read / cache-write 토큰 분류
 - 세션 output 통계 (total / avg / peak)
-- `now` — 현재 진행 중인 작업 (마지막 사용자 메시지) 한 줄 표시
+- **오늘 사용량** — 자정 기준 input / output / cache / 비용 합산
+- `now` — 현재 진행 중인 작업 (직접 입력한 마지막 프롬프트) 한 줄 표시
 
 **2 PROJECT 탭 — 인터랙티브 파일 브라우저**
 - 디렉토리 트리 (펼치기/접기)
@@ -164,7 +165,8 @@ tmux split-window -h "npx claude-code-hud"
 - Real 5h / weekly usage from Anthropic OAuth API — not estimates. Reset time shown as `1h 23m`
 - Input / output / cache-read / cache-write breakdown
 - Session output stats: total / avg / peak per hour
-- `now` line — last user message (current task at a glance)
+- **Today's usage** — input / output / cache / cost totals since midnight
+- `now` line — last prompt you typed (not tool results)
 
 **2 PROJECT tab — interactive file browser**
 - Navigable directory tree with expand/collapse
