@@ -753,7 +753,7 @@ function App() {
 
   const [usage,      setUsage]      = useState<any>(readTokenUsage(cwd));
   const [history,    setHistory]    = useState<any>(readTokenHistory(cwd));
-  const [git,        setGit]        = useState<any>(readGitInfo(cwd));
+  const [git,        setGit]        = useState<any>({ isRepo: false, branch: 'loading…', modified: [], added: [], deleted: [], recentCommits: [], totalChanges: 0 });
   const [project,    setProject]    = useState<ProjectInfo | null>(null);
   const [rateLimits, setRateLimits] = useState<any>(getUsageSync());
 
@@ -793,8 +793,8 @@ function App() {
   const refresh = useCallback(() => {
     setUsage(readTokenUsage(cwd));
     setHistory(readTokenHistory(cwd));
-    setGit(readGitInfo(cwd));
     setUpdatedAt(Date.now());
+    readGitInfo(cwd).then(setGit).catch(() => {});
     getUsage().then(setRateLimits).catch(() => {});
     readSessionTimeline(cwd).then(entries => {
       setTimeline(entries);
@@ -812,6 +812,8 @@ function App() {
       .catch(() => { setLoading(false); });
     // Full deep scan in background → update silently
     scanProject(cwd, 8).then(p => { setProject(p); }).catch(() => {});
+    // Initial git load (async)
+    readGitInfo(cwd).then(setGit).catch(() => {});
     // Initial API usage fetch
     getUsage().then(setRateLimits).catch(() => {});
     // Initial timeline load
