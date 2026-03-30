@@ -1033,7 +1033,7 @@ function App() {
     <Box flexDirection="column" height={termHeight}>
 
       {/* ── Header / Tab bar ── */}
-      <Box height={4} flexDirection="column" borderStyle="single" borderColor={ctxPct > 0.85 ? (blinkOn ? C.red : C.border) : ctxPct > 0.65 ? C.yellow : C.brand} paddingX={1}>
+      <Box height={3} borderStyle="single" borderColor={ctxPct > 0.85 ? (blinkOn ? C.red : C.border) : ctxPct > 0.65 ? C.yellow : C.brand} paddingX={1} justifyContent="space-between">
         <Box>
           <Text color={C.brand} bold>◆ HUD</Text>
           {TAB_NAMES.map((name, i) => (
@@ -1047,15 +1047,15 @@ function App() {
           ))}
         </Box>
         <Box>
-          <Text color={C.dimmer}>{modelShort(usage.model)}</Text>
-          <Text color={C.dimmer}>  ·  up {fmtSince(Date.now() - SESSION_START)}</Text>
+          <Text color={C.border}>  │  </Text>
+          <Text color={C.text} bold>{modelShort(usage.model)}</Text>
         </Box>
       </Box>
 
       {/* ── Content: fixed height so header/footer never get pushed off screen ── */}
       {(() => {
-        // header ~4 rows, footer key row ~1, footer dir row ~3 = 8 total chrome
-        const contentH = Math.max(4, termHeight - 8);
+        // header ~3 rows, footer key row ~1, footer dir row ~3 = 7 total chrome
+        const contentH = Math.max(4, termHeight - 7);
         return (
           <Box flexDirection="column" height={contentH} overflow="hidden">
             {showHelp ? (
@@ -1104,9 +1104,12 @@ function App() {
       </Box>
 
       {/* ── Footer row 2: current dir ── */}
-      <Box height={3} paddingX={1} borderStyle="single" borderColor={C.brand}>
-        <Text color={C.brand} bold>◆ </Text>
-        <Text color={C.text} bold>~/{basename(cwd)}</Text>
+      <Box height={3} paddingX={1} borderStyle="single" borderColor={C.brand} justifyContent="space-between">
+        <Box>
+          <Text color={C.brand} bold>◆ </Text>
+          <Text color={C.text} bold>~/{basename(cwd)}</Text>
+        </Box>
+        <Text color={C.dimmer}>up {fmtSince(Date.now() - SESSION_START)}</Text>
       </Box>
 
     </Box>
