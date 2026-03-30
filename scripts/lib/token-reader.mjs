@@ -75,7 +75,7 @@ function findLatestSession(cwd) {
 }
 
 /** Collect all JSONL lines for the given cwd (or all projects if no cwd) */
-function readAllLines(cwd) {
+async function readAllLines(cwd) {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return [];
   const targetDir = cwd ? cwdToProjectDir(cwd) : null;
@@ -88,7 +88,8 @@ function readAllLines(cwd) {
       const fullPath = path.join(projDir, file);
       const fileMtime = fs.statSync(fullPath).mtimeMs;
       try {
-        const lines = fs.readFileSync(fullPath, 'utf8').split('\n').filter(Boolean);
+        const raw = await fs.promises.readFile(fullPath, 'utf8');
+        const lines = raw.split('\n').filter(Boolean);
         for (const line of lines) {
           try {
             const obj = JSON.parse(line);
@@ -103,8 +104,8 @@ function readAllLines(cwd) {
   return result;
 }
 
-export function readTokenHistory(cwd) {
-  const allLines = readAllLines(cwd);
+export async function readTokenHistory(cwd) {
+  const allLines = await readAllLines(cwd);
   const now = Date.now();
   const h5  = now - 5  * 60 * 60 * 1000;
   const wk  = now - 7  * 24 * 60 * 60 * 1000;
@@ -155,7 +156,7 @@ export function readTokenHistory(cwd) {
   return { last5h: acc5h, lastWeek: accWk, today: accToday, hourlyBuckets: buckets };
 }
 
-export function readTokenUsage(cwd) {
+export async function readTokenUsage(cwd) {
   const sessionFile = findLatestSession(cwd);
   if (!sessionFile) {
     return empty();
@@ -170,7 +171,8 @@ export function readTokenUsage(cwd) {
   // For context window: use the LAST turn's snapshot (what's in context right now)
   let lastUsage = null;
 
-  const lines = fs.readFileSync(sessionFile, 'utf8').split('\n').filter(Boolean);
+  const raw = await fs.promises.readFile(sessionFile, 'utf8');
+  const lines = raw.split('\n').filter(Boolean);
   for (const line of lines) {
     try {
       const obj = JSON.parse(line);

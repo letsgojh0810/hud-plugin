@@ -1,6 +1,6 @@
 {
   "name": "claude-code-hud",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "Terminal HUD for Claude Code — real-time token usage, git status, project monitor",
   "type": "module",
   "bin": {

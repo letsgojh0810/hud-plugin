@@ -9,7 +9,9 @@ import { fileURLToPath } from 'url';
 import { dirname, join, basename } from 'path';
 import fs from 'fs';
 import os from 'os';
-import { execSync } from 'child_process';
+import { exec as execCb } from 'child_process';
+import { promisify } from 'util';
+const execAsync = promisify(execCb);
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const { readTokenUsage, readTokenHistory } = await import(join(__dir, '../scripts/lib/token-reader.mjs'));
@@ -197,11 +199,11 @@ function flattenTree(node: DirNode, depth: number, expanded: Record<string, bool
 }
 
 // ── Branch helper ───────────────────────────────────────────────────────────
-function getBranches(cwd: string): string[] {
+async function getBranches(cwd: string): Promise<string[]> {
   try {
-    const out = execSync('git branch', { cwd, encoding: 'utf8' });
-    return out.split('\n')
-      .map(b => b.replace(/^\*?\s+/, '').trim())
+    const { stdout } = await execAsync('git branch', { cwd });
+    return stdout.split('\n')
+      .map((b: string) => b.replace(/^\*?\s+/, '').trim())
       .filter(Boolean);
   } catch {
     return [];
@@ -239,7 +241,7 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
 
   for (const filePath of allFiles) {
     try {
-      const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+      const lines = (await fs.promises.readFile(filePath, 'utf-8')).split('\n').filter(Boolean);
       for (const line of lines) {
         try {
           const obj = JSON.parse(line);
@@ -749,8 +751,8 @@ function App() {
   const cwd = process.env.CLAUDE_PROJECT_ROOT || process.cwd();
   const C = makeTheme(accent);
 
-  const [usage,      setUsage]      = useState<any>(readTokenUsage(cwd));
-  const [history,    setHistory]    = useState<any>(readTokenHistory(cwd));
+  const [usage,      setUsage]      = useState<any>({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, contextWindow: 200000, model: 'claude-sonnet-4', cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
+  const [history,    setHistory]    = useState<any>({ last5h: null, lastWeek: null, today: null, hourlyBuckets: Array(12).fill(0) });
   const [git,        setGit]        = useState<any>({ isRepo: false, branch: 'loading…', modified: [], added: [], deleted: [], recentCommits: [], totalChanges: 0 });
   const [project,    setProject]    = useState<ProjectInfo | null>(null);
   const [rateLimits, setRateLimits] = useState<any>(getUsageSync());
@@ -789,8 +791,8 @@ function App() {
   const [currentActivity,  setCurrentActivity]  = useState<string>('');
 
   const refresh = useCallback(() => {
-    setUsage(readTokenUsage(cwd));
-    setHistory(readTokenHistory(cwd));
+    readTokenUsage(cwd).then(setUsage).catch(() => {});
+    readTokenHistory(cwd).then(setHistory).catch(() => {});
     setUpdatedAt(Date.now());
     readGitInfo(cwd).then(setGit).catch(() => {});
     getUsage().then(setRateLimits).catch(() => {});
@@ -804,6 +806,9 @@ function App() {
   }, [cwd]);
 
   useEffect(() => {
+    // Initial token data loads (async)
+    readTokenUsage(cwd).then(setUsage).catch(() => {});
+    readTokenHistory(cwd).then(setHistory).catch(() => {});
     // Scan project once
     // Quick shallow scan first → show UI immediately
     scanProject(cwd, 2).then(p => { setProject(p); setLoading(false); })
@@ -881,11 +886,13 @@ function App() {
       if (key.return) {
         const selected = branchList[branchCursor];
         if (selected && selected !== git.branch) {
-          try {
-            execSync(`git checkout ${selected}`, { cwd });
-            process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
-            refresh();
-          } catch {}
+          execAsync(`git checkout ${selected}`, { cwd })
+            .then(() => {
+              process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+              readGitInfo(cwd).then(setGit).catch(() => {});
+              refresh();
+            })
+            .catch(() => {});
         }
         setBranchMode(false);
         return;
@@ -899,11 +906,12 @@ function App() {
 
     // b (or Korean ㅠ) = open branch switcher in GIT tab
     if ((input === 'b' || input === 'ㅠ') && tab === 2) {
-      const branches = getBranches(cwd);
-      setBranchList(branches);
-      const idx = branches.findIndex(b => b === git.branch);
-      setBranchCursor(idx >= 0 ? idx : 0);
-      setBranchMode(true);
+      getBranches(cwd).then(branches => {
+        setBranchList(branches);
+        const idx = branches.findIndex((b: string) => b === git.branch);
+        setBranchCursor(idx >= 0 ? idx : 0);
+        setBranchMode(true);
+      });
       return;
     }
 
