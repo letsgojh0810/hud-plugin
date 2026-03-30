@@ -3,7 +3,7 @@
  * HUD Live — Ink TUI
  * Run: npm run hud  (from hud-plugin root)
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { render, Box, Text, useStdout, useInput } from 'ink';
 import { fileURLToPath } from 'url';
 import { dirname, join, basename } from 'path';
@@ -601,6 +601,13 @@ function ProjectTab({ info, treeCursor, treeExpanded, selectedFile, fileLines, f
 
 // ── Tab 3: GIT ─────────────────────────────────────────────────────────────
 function GitTab({ git, C, termWidth, branchMode, branchList, branchCursor }: any) {
+  if (!git.isRepo) return (
+    <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
+      <Text color={C.dimmer}>⚠ git repository not found in this directory</Text>
+      <Text color={C.dimmer}>  cd into a git repo to see branch, diff, and commit info</Text>
+    </Box>
+  );
+
   const gitFiles = [
     ...(git.modified ?? []).map((f: string) => ({ status: 'MOD', path: f })),
     ...(git.added    ?? []).map((f: string) => ({ status: 'ADD', path: f })),
@@ -770,6 +777,9 @@ function App() {
   const [spinFrame, setSpinFrame] = useState(0);
   const SPIN = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
 
+  // q key debounce ref (require 2 presses within 600ms to quit)
+  const lastQRef = useRef(0);
+
   // Branch switcher state
   const [branchMode,   setBranchMode]   = useState(false);
   const [branchList,   setBranchList]   = useState<string[]>([]);
@@ -897,7 +907,12 @@ function App() {
       return;
     }
 
-    if (input === 'q' || input === 'ㅂ') process.exit(0);
+    if (input === 'q' || input === 'ㅂ') {
+      const now = Date.now();
+      if (now - lastQRef.current < 600) { process.exit(0); }
+      lastQRef.current = now;
+      return;
+    }
 
     // Escape: close file viewer first, then quit
     if (key.escape) {
