@@ -219,9 +219,8 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   if (!fs.existsSync(projectsDir)) return [];
 
   const targetDirName = cwd.replace(/\//g, '-');
+  const allFiles: string[] = [];
 
-  let latestFile: string | null = null;
-  let latestMtime = 0;
   try {
     for (const projectHash of fs.readdirSync(projectsDir)) {
       if (projectHash !== targetDirName) continue;
@@ -229,44 +228,43 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
       if (!fs.statSync(sessionDir).isDirectory()) continue;
       for (const file of fs.readdirSync(sessionDir)) {
         if (!file.endsWith('.jsonl')) continue;
-        const filePath = join(sessionDir, file);
-        try {
-          const mtime = fs.statSync(filePath).mtimeMs;
-          if (mtime > latestMtime) { latestMtime = mtime; latestFile = filePath; }
-        } catch {}
+        allFiles.push(join(sessionDir, file));
       }
     }
   } catch {}
 
-  if (!latestFile) return [];
+  if (allFiles.length === 0) return [];
 
-  const lines = fs.readFileSync(latestFile, 'utf-8').split('\n').filter(Boolean);
-  const entries: TimelineEntry[] = [];
+  const entries: (TimelineEntry & { ts: number })[] = [];
 
-  for (const line of lines) {
+  for (const filePath of allFiles) {
     try {
-      const obj = JSON.parse(line);
-      if (obj.type !== 'user') continue;
-      const content = obj.message?.content;
-      // Skip tool_result messages (not direct user prompts)
-      if (Array.isArray(content) && content.some((b: any) => b.type === 'tool_result')) continue;
-      const textBlock = Array.isArray(content)
-        ? content.find((b: any) => b.type === 'text')
-        : null;
-      const text: string = textBlock?.text ?? (typeof content === 'string' ? content : '');
-      if (!text.trim()) continue;
+      const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.type !== 'user') continue;
+          const content = obj.message?.content;
+          if (Array.isArray(content) && content.some((b: any) => b.type === 'tool_result')) continue;
+          const textBlock = Array.isArray(content)
+            ? content.find((b: any) => b.type === 'text')
+            : null;
+          const text: string = textBlock?.text ?? (typeof content === 'string' ? content : '');
+          if (!text.trim()) continue;
 
-      const ts: string = obj.timestamp ?? '';
-      let time = '';
-      if (ts) {
-        try { time = new Date(ts).toTimeString().slice(0, 5); } catch {}
+          const tsStr: string = obj.timestamp ?? '';
+          const tsNum = tsStr ? new Date(tsStr).getTime() : 0;
+          const time = tsStr ? new Date(tsStr).toTimeString().slice(0, 5) : '';
+
+          entries.push({ ts: tsNum, time, text: text.replace(/\n/g, ' ').slice(0, 80) });
+        } catch {}
       }
-
-      entries.push({ time, text: text.replace(/\n/g, ' ').slice(0, 80) });
     } catch {}
   }
 
-  return entries.slice(-30);
+  // Sort all sessions by time, return last 50
+  entries.sort((a, b) => a.ts - b.ts);
+  return entries.slice(-50).map(({ time, text }) => ({ time, text }));
 }
 
 // ── UI Components ──────────────────────────────────────────────────────────
@@ -845,7 +843,7 @@ function App() {
         let debounceTimer: ReturnType<typeof setTimeout> | null = null;
         watcher.on('change', () => {
           if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(refresh, 800);
+          debounceTimer = setTimeout(refresh, 2000);
         });
       });
     }
