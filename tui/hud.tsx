@@ -720,6 +720,7 @@ function TimelineTab({ timeline, timelineScroll, C }: any) {
     <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
       <Text color={C.dimmer} bold>▸ <Text color={C.text}>SESSION HISTORY</Text>
         {entries.length > 0 && <Text color={C.dimmer}>  {timelineScroll + 1}–{Math.min(timelineScroll + TIMELINE_VISIBLE, entries.length)} / {entries.length}</Text>}
+        {entries.length > 0 && <Text color={C.dimmer}>  [x] clear</Text>}
       </Text>
       <Box flexDirection="column" marginTop={1}>
         {entries.length === 0 && <Text color={C.dimmer}>  no messages yet</Text>}
@@ -933,6 +934,13 @@ function App() {
     if (input === '3') { setTab(2); setScrollY(0); }
     if (input === '4') { setTab(3); setScrollY(0); }
     if (input === 'd' || input === 'ㅇ') setAccent(a => (a + 1) % ACCENTS.length);
+
+    // x = clear session history (tab 4 only)
+    if ((input === 'x' || input === 'ㅌ') && tab === 3) {
+      setTimeline([]);
+      setTimelineScroll(0);
+      return;
+    }
 
     // r = manual refresh
     if (input === 'r' || input === 'ㄱ') {

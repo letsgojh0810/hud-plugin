@@ -8,7 +8,7 @@
 
 Claude Code로 작업할 때 토큰 사용량, git 상태, 파일 구조, 세션 히스토리를 IDE나 별도 툴 없이 터미널 하나에서 확인할 수 있는 HUD입니다.
 
-<img src="./demo.gif" width="700" alt="demo">
+<img src="./capture.png" width="700" alt="side-by-side demo">
 
 ### 사용법
 
@@ -21,8 +21,6 @@ cd ~/my-project                  cd ~/my-project
 claude                           npx claude-code-hud
 (Claude Code 작업 중...)          (HUD 실시간 표시)
 ```
-
-<img src="./capture.png" width="700" alt="side-by-side terminals">
 
 HUD는 현재 디렉토리를 기준으로 토큰, git, 프로젝트 정보를 자동으로 인식합니다.
 
@@ -52,6 +50,8 @@ tmux split-window -h "npx claude-code-hud"
 - 세션 output 통계 (total / avg / peak)
 - **오늘 사용량** — 자정 기준 input / output / cache / 비용 합산
 - `now` — 현재 진행 중인 작업 (직접 입력한 마지막 프롬프트) 한 줄 표시
+
+<img src="./demo.gif" width="700" alt="token tab demo">
 
 **2 PROJECT 탭 — 인터랙티브 파일 브라우저**
 - 디렉토리 트리 (펼치기/접기)
@@ -125,7 +125,7 @@ Claude Code를 한 번 실행하면 `~/.claude/.credentials.json`에 credentials
 
 A Terminal HUD (Heads-Up Display) for Claude Code — real-time token usage, git status, interactive project file browser, and session history. No IDE, no extra tabs. Just a second terminal window.
 
-<img src="./demo.gif" width="700" alt="demo">
+<img src="./capture.png" width="700" alt="side-by-side demo">
 
 ### Usage
 
@@ -138,8 +138,6 @@ cd ~/my-project                  cd ~/my-project
 claude                           npx claude-code-hud
 (working with Claude Code)       (HUD live display)
 ```
-
-<img src="./capture.png" width="700" alt="side-by-side terminals">
 
 ```bash
 # tmux split pane
@@ -167,6 +165,8 @@ tmux split-window -h "npx claude-code-hud"
 - Session output stats: total / avg / peak per hour
 - **Today's usage** — input / output / cache / cost totals since midnight
 - `now` line — last prompt you typed (not tool results)
+
+<img src="./demo.gif" width="700" alt="token tab demo">
 
 **2 PROJECT tab — interactive file browser**
 - Navigable directory tree with expand/collapse
