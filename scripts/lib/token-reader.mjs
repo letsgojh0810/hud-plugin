@@ -34,9 +34,12 @@ function getContextWindow(model) {
   return 200000;
 }
 
-/** Convert cwd to the Claude project directory name (/ replaced with -) */
+/** Convert cwd to the Claude project directory name used by Claude Code.
+ *  macOS/Linux: /a/b/c  → -a-b-c   (/ → -)
+ *  Windows:     C:\a\b  → C--a-b   (\ → -, : → -)
+ */
 function cwdToProjectDir(cwd) {
-  return cwd.replace(/\//g, '-');
+  return cwd.replace(/[/\\]/g, '-').replace(/:/g, '-');
 }
 
 /** Find the most recently modified .jsonl session file for the given cwd */
