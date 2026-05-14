@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { render, Box, Text, useStdout, useInput } from 'ink';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, basename } from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -14,9 +14,9 @@ import { promisify } from 'util';
 const execAsync = promisify(execCb);
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const { readTokenUsage, readTokenHistory } = await import(join(__dir, '../scripts/lib/token-reader.mjs'));
-const { readGitInfo } = await import(join(__dir, '../scripts/lib/git-info.mjs'));
-const { getUsage, getUsageSync } = await import(join(__dir, '../scripts/lib/usage-api.mjs'));
+const { readTokenUsage, readTokenHistory } = await import(pathToFileURL(join(__dir, '../scripts/lib/token-reader.mjs')).href);
+const { readGitInfo } = await import(pathToFileURL(join(__dir, '../scripts/lib/git-info.mjs')).href);
+const { getUsage, getUsageSync } = await import(pathToFileURL(join(__dir, '../scripts/lib/usage-api.mjs')).href);
 
 // Enter alternate screen buffer (like vim/htop — terminal never scrolls, header stays fixed)
 process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
