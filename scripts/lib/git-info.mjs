@@ -24,7 +24,7 @@ export async function readGitInfo(cwd = process.cwd()) {
   const [aheadBehind, statusOut, logOut, numstatOut] = await Promise.all([
     run('git rev-list --left-right --count @{upstream}...HEAD 2>/dev/null || echo "0\t0"', cwd),
     run('git status --porcelain', cwd),
-    run('git log --oneline -5 --format="%h|%s|%cr"', cwd),
+    run('git log --oneline -10 --format="%h|%s|%cr"', cwd),
     run('git diff --numstat HEAD 2>/dev/null', cwd),
   ]);
 

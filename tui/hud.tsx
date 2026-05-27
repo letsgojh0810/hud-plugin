@@ -731,7 +731,7 @@ function GitTab({ git, C, termWidth, branchMode, branchList, branchCursor }: any
 
       {/* Recent commits */}
       <Section title="RECENT COMMITS" C={C}>
-        {(git.recentCommits ?? []).slice(0, 5).map((c: any, i: number) => (
+        {(git.recentCommits ?? []).slice(0, 10).map((c: any, i: number) => (
           <Box key={i}>
             <Text color={C.brand}>{c.hash}  </Text>
             <Box flexGrow={1}>
