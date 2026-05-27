@@ -73,6 +73,34 @@ function sparkline(buckets: number[]): string {
   return buckets.map(v => SPARK_CHARS[Math.round((v / max) * 8)]).join('');
 }
 
+// ── Buddy greeting ─────────────────────────────────────────────────────────
+async function getBuddyName(): Promise<string> {
+  try {
+    const { stdout } = await execAsync('git remote get-url origin');
+    const url = stdout.trim();
+    // https://github.com/USERNAME/repo.git  or  git@github.com:USERNAME/repo.git
+    const match = url.match(/github\.com[:/]([^/]+)\//);
+    if (match?.[1]) return match[1];
+  } catch {}
+  return process.env.USERNAME || process.env.USER || os.userInfo().username || 'there';
+}
+
+function makeGreeting(name: string) {
+  const GREETINGS = [
+    { line1: `Hi ${name}, what are we coding today?`, line2: "Tokens are looking good 💻" },
+    { line1: `Hey ${name}, back again.`, line2: "Let's see how far we get today ☕" },
+    { line1: `Hi ${name}, good to see you.`, line2: "Context window is all yours 🚀" },
+    { line1: `Hey ${name}, ready when you are.`, line2: "Take your time 👌" },
+    { line1: `Hi ${name}, what's on the list today?`, line2: "Should be a good session ✨" },
+    { line1: `Hey ${name}, let's get into it.`, line2: "Plenty of tokens left 🔋" },
+    { line1: `Hi ${name}, another day of shipping.`, line2: "Context window's wide open 🌊" },
+    { line1: `Hey ${name}, glad you're here.`, line2: "What are we building? 🛠️" },
+    { line1: `Hi ${name}, pick up where you left off?`, line2: "Tokens are ready ⚡" },
+    { line1: `Hey ${name}, nice to have you back.`, line2: "Let's make something today 🎯" },
+  ];
+  return GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+}
+
 // ── Directory tree types ────────────────────────────────────────────────────
 type DirNode = {
   name: string;
@@ -290,7 +318,7 @@ function Section({ title, children, C, accent }: { title: string; children: Reac
 }
 
 // ── Tab 1: TOKENS ──────────────────────────────────────────────────────────
-function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, C }: any) {
+function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, greeting, C }: any) {
   const ctxPct   = usage.contextWindow > 0 ? usage.totalTokens / usage.contextWindow : 0;
   const ctxColor = ctxPct > 0.85 ? C.red : ctxPct > 0.65 ? C.yellow : C.brand;
   const ctxLabel = ctxPct > 0.85 ? 'WARN' : ctxPct > 0.65 ? 'MID' : 'OK';
@@ -307,6 +335,14 @@ function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, C }
 
   return (
     <Box flexDirection="column">
+      {/* Buddy greeting */}
+      {greeting && (
+        <Box paddingX={1} paddingTop={1} flexDirection="column">
+          <Text color={C.text} bold>{greeting.line1}</Text>
+          <Text color={C.dim}>{greeting.line2}</Text>
+        </Box>
+      )}
+
       {/* Context Window */}
       <Section title="CONTEXT WINDOW" C={C}>
         <Box>
@@ -790,6 +826,7 @@ function App() {
   const [timeline,         setTimeline]         = useState<TimelineEntry[]>([]);
   const [timelineScroll,   setTimelineScroll]   = useState(0);
   const [currentActivity,  setCurrentActivity]  = useState<string>('');
+  const [greeting, setGreeting] = useState<{ line1: string; line2: string } | null>(null);
 
   const refresh = useCallback(() => {
     readTokenUsage(cwd).then(setUsage).catch(() => {});
@@ -820,6 +857,9 @@ function App() {
     readGitInfo(cwd).then(setGit).catch(() => {});
     // Initial API usage fetch
     getUsage().then(setRateLimits).catch(() => {});
+    // Buddy greeting (once per session)
+    getBuddyName().then(name => setGreeting(makeGreeting(name))).catch(() => {});
+
     // Initial timeline load
     readSessionTimeline(cwd).then(entries => {
       setTimeline(entries);
@@ -1088,7 +1128,7 @@ function App() {
               </Box>
             ) : (
               <Box flexDirection="column" height={contentH} marginTop={-scrollY}>
-                {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} C={C} />}
+                {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} greeting={greeting} C={C} />}
                 {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} contentH={contentH - 1} git={git} C={C} />}
                 {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
                 {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
