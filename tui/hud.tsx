@@ -220,7 +220,7 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   const projectsDir = join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return [];
 
-  const targetDirName = cwd.replace(/\//g, '-');
+  const targetDirName = cwd.replace(/[/\\]/g, '-').replace(/:/g, '-');
   const allFiles: string[] = [];
 
   try {
