@@ -274,13 +274,20 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
         try {
           const obj = JSON.parse(line);
           if (obj.type !== 'user') continue;
+          if (obj.isSidechain) continue;
           const content = obj.message?.content;
-          if (Array.isArray(content) && content.some((b: any) => b.type === 'tool_result')) continue;
+          // skip tool results and array-only messages (system injections)
+          if (Array.isArray(content)) {
+            if (content.some((b: any) => b.type === 'tool_result')) continue;
+            if (!content.some((b: any) => b.type === 'text')) continue;
+          }
           const textBlock = Array.isArray(content)
             ? content.find((b: any) => b.type === 'text')
             : null;
           const text: string = textBlock?.text ?? (typeof content === 'string' ? content : '');
           if (!text.trim()) continue;
+          // skip system-injected messages (XML tags, hook outputs)
+          if (text.trimStart().startsWith('<')) continue;
 
           const tsStr: string = obj.timestamp ?? '';
           const tsNum = tsStr ? new Date(tsStr).getTime() : 0;
@@ -292,9 +299,9 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
     } catch {}
   }
 
-  // Sort all sessions by time, return last 50
-  entries.sort((a, b) => a.ts - b.ts);
-  return entries.slice(-50).map(({ time, text }) => ({ time, text }));
+  // Sort newest first, return latest 50
+  entries.sort((a, b) => b.ts - a.ts);
+  return entries.slice(0, 50).map(({ time, text }) => ({ time, text }));
 }
 
 // ── UI Components ──────────────────────────────────────────────────────────
@@ -747,7 +754,7 @@ function GitTab({ git, C, termWidth, branchMode, branchList, branchCursor }: any
 }
 
 // ── Tab 4: TIMELINE ────────────────────────────────────────────────────────
-const TIMELINE_VISIBLE = 10;
+const TIMELINE_VISIBLE = 20;
 
 function TimelineTab({ timeline, timelineScroll, C }: any) {
   const entries = timeline as TimelineEntry[];
@@ -997,7 +1004,7 @@ function App() {
         const flat = project?.dirTree ? flattenTree(project.dirTree, 0, treeExpanded) : [];
         setTreeCursor(c => Math.min(c + 1, flat.length - 1));
       } else if (tab === 3) {
-        setTimelineScroll(s => Math.min(s + 1, Math.max(0, timeline.length - 10)));
+        setTimelineScroll(s => Math.min(s + 1, Math.max(0, timeline.length - 20)));
       } else {
         setScrollY(s => Math.min(s + 1, 20));
       }
