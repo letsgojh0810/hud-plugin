@@ -844,8 +844,7 @@ function App() {
     readSessionTimeline(cwd).then(entries => {
       setTimeline(entries);
       if (entries.length > 0) {
-        const last = entries[entries.length - 1];
-        setCurrentActivity(last.text);
+        setCurrentActivity(entries[0].text);
       }
     }).catch(() => {});
   }, [cwd]);
@@ -871,8 +870,7 @@ function App() {
     readSessionTimeline(cwd).then(entries => {
       setTimeline(entries);
       if (entries.length > 0) {
-        const last = entries[entries.length - 1];
-        setCurrentActivity(last.text);
+        setCurrentActivity(entries[0].text);
       }
     }).catch(() => {});
 
