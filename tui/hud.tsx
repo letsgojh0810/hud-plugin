@@ -3,7 +3,7 @@
  * HUD Live — Ink TUI
  * Run: npm run hud  (from hud-plugin root)
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { render, Box, Text, useStdout, useInput } from 'ink';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, basename } from 'path';
@@ -339,20 +339,14 @@ function Section({ title, children, C, accent }: { title: string; children: Reac
 }
 
 // ── Tab 1: TOKENS ──────────────────────────────────────────────────────────
-function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, greeting, C }: any) {
+function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, greeting, sessionAnalysis, C }: any) {
   const ctxPct   = usage.contextWindow > 0 ? usage.totalTokens / usage.contextWindow : 0;
   const ctxColor = ctxPct > 0.85 ? C.red : ctxPct > 0.65 ? C.yellow : C.brand;
   const ctxLabel = ctxPct > 0.85 ? 'WARN' : ctxPct > 0.65 ? 'MID' : 'OK';
   const ctxLabelC = ctxPct > 0.85 ? C.red : ctxPct > 0.65 ? C.yellow : C.green;
   const CTX_BAR = Math.max(20, Math.min(44, termWidth - 32));
 
-  const maxTok = Math.max(usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens, 1);
-  const BAR_W  = Math.max(12, Math.min(24, termWidth - 54));
-
   const spark = sparkline(history.hourlyBuckets);
-
-  const totalTok = (w: any) =>
-    w.inputTokens + w.outputTokens + w.cacheReadTokens + w.cacheWriteTokens;
 
   return (
     <Box flexDirection="column">
@@ -419,25 +413,34 @@ function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, gre
         );
       })()}
 
-      {/* Token breakdown */}
-      <Section title="TOKENS  (this session)" C={C}>
-        {[
-          { label: 'input',       tokens: usage.inputTokens,      color: C.brand  },
-          { label: 'output',      tokens: usage.outputTokens,     color: C.purple },
-          { label: 'cache-read',  tokens: usage.cacheReadTokens,  color: C.cyan   },
-          { label: 'cache-write', tokens: usage.cacheWriteTokens, color: C.green  },
-        ].map(({ label, tokens, color }) => {
-          const pct = maxTok > 0 ? Math.round(tokens / maxTok * 100) : 0;
-          return (
-            <Box key={label} marginBottom={1}>
-              <Box width={14}><Text color={C.dim}>{label}</Text></Box>
-              <Box width={BAR_W}><Bar ratio={maxTok > 0 ? tokens / maxTok : 0} width={BAR_W} color={color} C={C} /></Box>
-              <Box width={9}  justifyContent="flex-end"><Text color={C.text}> {fmtNum(tokens)}</Text></Box>
-              <Box width={5}  justifyContent="flex-end"><Text color={C.dimmer}> {pct}%</Text></Box>
+      {/* Session tokens — compact one-liner */}
+      <Box paddingX={1} marginBottom={1}>
+        <Text color={C.dimmer}>session  </Text>
+        <Text color={C.dim}>in </Text><Text color={C.brand}>{fmtNum(usage.inputTokens)}</Text>
+        <Text color={C.dim}>  out </Text><Text color={C.purple}>{fmtNum(usage.outputTokens)}</Text>
+        <Text color={C.dim}>  cache </Text><Text color={C.cyan}>{fmtNum(usage.cacheReadTokens + usage.cacheWriteTokens)}</Text>
+      </Box>
+
+      {/* Session Focus — rule-based goal + todo from timeline */}
+      {sessionAnalysis && (
+        <Section title="SESSION FOCUS" C={C}>
+          <Box>
+            <Text color={C.dimmer}>goal  </Text>
+            <Text color={C.text}>{sessionAnalysis.goal.slice(0, termWidth - 10)}</Text>
+          </Box>
+          {sessionAnalysis.todos.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color={C.dimmer}>todo</Text>
+              {sessionAnalysis.todos.map((todo: string, i: number) => (
+                <Box key={i}>
+                  <Text color={C.brand}>  · </Text>
+                  <Text color={C.text}>{todo.slice(0, termWidth - 8)}</Text>
+                </Box>
+              ))}
             </Box>
-          );
-        })}
-      </Section>
+          )}
+        </Section>
+      )}
 
       {/* Output stats */}
       {(() => {
@@ -469,8 +472,6 @@ function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, gre
           <Text color={C.purple} bold>{fmtNum(history.today?.outputTokens ?? 0)}</Text>
           <Text color={C.dimmer}>   cache  </Text>
           <Text color={C.cyan}   bold>{fmtNum((history.today?.cacheReadTokens ?? 0) + (history.today?.cacheWriteTokens ?? 0))}</Text>
-          <Text color={C.dimmer}>   </Text>
-          <Text color={costColor(history.today?.cost?.total ?? 0, C)} bold>{fmtCost(history.today?.cost?.total ?? 0)}</Text>
         </Box>
       </Section>
 
@@ -849,6 +850,31 @@ function App() {
   const [currentActivity,  setCurrentActivity]  = useState<string>('');
   const [greeting, setGreeting] = useState<{ line1: string; line2: string } | null>(null);
 
+  // Session analysis derived from timeline (rule-based, no AI)
+  const sessionAnalysis = useMemo(() => {
+    if (timeline.length === 0) return null;
+    // timeline is newest-first; oldest = last entry = session start
+    const goalText = timeline[timeline.length - 1].text;
+    const goal = goalText.split('\n')[0].trim();
+    // Extract list-item TODOs from the 5 most recent messages
+    const todos: string[] = [];
+    for (const entry of timeline.slice(0, 5)) {
+      for (const line of entry.text.split('\n')) {
+        const t = line.trim();
+        if (t.length < 3) continue;
+        if (t.startsWith('-') || t.startsWith('•') || t.startsWith('*') || /^\d+\./.test(t)) {
+          const cleaned = t
+            .replace(/^[-•*]\s*\[[ x]?\]\s*/i, '')
+            .replace(/^[-•*]\s+/, '')
+            .replace(/^\d+\.\s+/, '');
+          if (cleaned.length > 2) todos.push(cleaned);
+        }
+      }
+      if (todos.length >= 5) break;
+    }
+    return { goal, todos: todos.slice(0, 5) };
+  }, [timeline]);
+
   const refresh = useCallback(() => {
     readTokenUsage(cwd).then(setUsage).catch(() => {});
     readTokenHistory(cwd).then(setHistory).catch(() => {});
@@ -1154,7 +1180,7 @@ function App() {
               </Box>
             ) : (
               <Box flexDirection="column" height={contentH} marginTop={-scrollY}>
-                {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} greeting={greeting} C={C} />}
+                {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} greeting={greeting} sessionAnalysis={sessionAnalysis} C={C} />}
                 {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} contentH={contentH - 1} git={git} C={C} />}
                 {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
                 {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
