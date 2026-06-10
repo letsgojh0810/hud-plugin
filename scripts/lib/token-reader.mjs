@@ -147,7 +147,7 @@ export async function readTokenHistory(cwd) {
 
     if (ts >= h12) {
       const hoursAgo = (now - ts) / (60 * 60 * 1000);
-      const idx = Math.min(11, Math.floor(12 - hoursAgo));
+      const idx = Math.min(11, Math.max(0, 11 - Math.floor(hoursAgo)));
       if (idx >= 0) buckets[idx] += out;
     }
   }

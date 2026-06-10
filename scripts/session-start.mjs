@@ -18,8 +18,8 @@ try {
 const input = JSON.parse(raw || '{}');
 const cwd = input.cwd || input.directory || process.env.CLAUDE_PROJECT_ROOT || process.cwd();
 
-const usage = readTokenUsage();
-const git = readGitInfo(cwd);
+const usage = await readTokenUsage(cwd);
+const git = await readGitInfo(cwd);
 
 // Quick file count
 let fileCount = '?';

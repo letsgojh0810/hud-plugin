@@ -68,7 +68,8 @@ const modelShort = (m: string) =>
   m.replace('claude-', '').replace(/-202\d+(-\d+)?$/, '');
 
 const SPARK_CHARS = ' ▁▂▃▄▅▆▇█';
-function sparkline(buckets: number[]): string {
+function sparkline(buckets: number[] = []): string {
+  if (!buckets.length) return ' '.repeat(12);
   const max = Math.max(...buckets, 1);
   return buckets.map(v => SPARK_CHARS[Math.round((v / max) * 8)]).join('');
 }

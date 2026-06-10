@@ -14,8 +14,8 @@ const { tokenPanel, gitPanel, divider } = await import(pathToFileURL(join(__dir,
 
 const cwd = process.env.CLAUDE_PROJECT_ROOT || process.cwd();
 
-const usage = readTokenUsage();
-const git = readGitInfo(cwd);
+const usage = await readTokenUsage(cwd);
+const git = await readGitInfo(cwd);
 
 const D = divider(54);
 

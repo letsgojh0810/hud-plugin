@@ -14,8 +14,8 @@ const { fmtK, fmtCost, statusLabel } = await import(pathToFileURL(join(__dir, 'l
 
 const cwd = process.env.CLAUDE_PROJECT_ROOT || process.cwd();
 
-const usage = readTokenUsage();
-const git = readGitInfo(cwd);
+const usage = await readTokenUsage(cwd);
+const git = await readGitInfo(cwd);
 
 // Token status
 const pct = Math.round((usage.totalTokens / usage.contextWindow) * 100);
