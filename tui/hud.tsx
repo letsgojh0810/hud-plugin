@@ -9,9 +9,10 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, basename } from 'path';
 import fs from 'fs';
 import os from 'os';
-import { exec as execCb } from 'child_process';
+import { exec as execCb, execFile as execFileCb } from 'child_process';
 import { promisify } from 'util';
 const execAsync = promisify(execCb);
+const execFileAsync = promisify(execFileCb);
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const { readTokenUsage, readTokenHistory } = await import(pathToFileURL(join(__dir, '../scripts/lib/token-reader.mjs')).href);
@@ -233,7 +234,7 @@ async function getBranches(cwd: string): Promise<string[]> {
     const { stdout } = await execAsync('git branch', { cwd });
     return stdout.split('\n')
       .map((b: string) => b.replace(/^\*?\s+/, '').trim())
-      .filter(Boolean);
+      .filter((b: string) => b && !b.startsWith('('));  // detached HEAD 제외
   } catch {
     return [];
   }
@@ -244,6 +245,9 @@ type TimelineEntry = {
   time: string;
   text: string;
 };
+
+// 파일별 타임라인 파싱 캐시 — mtime이 같으면 재파싱 생략
+const _timelineCache = new Map<string, { mtime: number; entries: (TimelineEntry & { ts: number })[] }>();
 
 async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   const projectsDir = join(os.homedir(), '.claude', 'projects');
@@ -269,6 +273,16 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   const entries: (TimelineEntry & { ts: number })[] = [];
 
   for (const filePath of allFiles) {
+    let fileMtime: number;
+    try { fileMtime = fs.statSync(filePath).mtimeMs; } catch { continue; }
+
+    const cached = _timelineCache.get(filePath);
+    if (cached && cached.mtime === fileMtime) {
+      entries.push(...cached.entries);
+      continue;
+    }
+
+    const fileEntries: (TimelineEntry & { ts: number })[] = [];
     try {
       const lines = (await fs.promises.readFile(filePath, 'utf-8')).split('\n').filter(Boolean);
       for (const line of lines) {
@@ -277,7 +291,6 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
           if (obj.type !== 'user') continue;
           if (obj.isSidechain) continue;
           const content = obj.message?.content;
-          // skip tool results and array-only messages (system injections)
           if (Array.isArray(content)) {
             if (content.some((b: any) => b.type === 'tool_result')) continue;
             if (!content.some((b: any) => b.type === 'text')) continue;
@@ -287,20 +300,20 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
             : null;
           const text: string = textBlock?.text ?? (typeof content === 'string' ? content : '');
           if (!text.trim()) continue;
-          // skip system-injected messages (XML tags, hook outputs)
           if (text.trimStart().startsWith('<')) continue;
 
           const tsStr: string = obj.timestamp ?? '';
           const tsNum = tsStr ? new Date(tsStr).getTime() : 0;
           const time = tsStr ? new Date(tsStr).toTimeString().slice(0, 5) : '';
 
-          entries.push({ ts: tsNum, time, text: text.replace(/\n/g, ' ').slice(0, 80) });
+          fileEntries.push({ ts: tsNum, time, text: text.replace(/\n/g, ' ').slice(0, 80) });
         } catch {}
       }
     } catch {}
+    _timelineCache.set(filePath, { mtime: fileMtime, entries: fileEntries });
+    entries.push(...fileEntries);
   }
 
-  // Sort newest first, return latest 50
   entries.sort((a, b) => b.ts - a.ts);
   return entries.slice(0, 50).map(({ time, text }) => ({ time, text }));
 }
@@ -850,6 +863,10 @@ function App() {
     }).catch(() => {});
   }, [cwd]);
 
+  // 항상 최신 refresh를 가리키는 ref — setInterval이 stale closure를 캡처하지 않도록
+  const refreshRef = useRef(refresh);
+  useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+
   useEffect(() => {
     // Initial token data loads (async)
     readTokenUsage(cwd).then(setUsage).catch(() => {});
@@ -882,12 +899,14 @@ function App() {
     };
     stdout?.on('resize', onResize);
 
-    const poll = setInterval(refresh, 3000);
+    const poll = setInterval(() => refreshRef.current(), 3000);
 
     const projectsDir = join(os.homedir(), '.claude', 'projects');
     let watcher: any = null;
+    let watcherCancelled = false;
     if (fs.existsSync(projectsDir)) {
       import('chokidar').then(({ default: chokidar }) => {
+        if (watcherCancelled) return;
         watcher = chokidar.watch(projectsDir, {
           depth: 2, persistent: true, ignoreInitial: true,
           ignored: (p: string) => !p.endsWith('.jsonl'),
@@ -906,6 +925,7 @@ function App() {
       stdout?.off('resize', onResize);
       clearInterval(poll);
       clearInterval(tickInterval);
+      watcherCancelled = true;
       watcher?.close();
     };
   }, []);
@@ -933,7 +953,7 @@ function App() {
       if (key.return) {
         const selected = branchList[branchCursor];
         if (selected && selected !== git.branch) {
-          execAsync(`git checkout ${selected}`, { cwd })
+          execFileAsync('git', ['checkout', selected], { cwd })
             .then(() => {
               process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
               readGitInfo(cwd).then(setGit).catch(() => {});
