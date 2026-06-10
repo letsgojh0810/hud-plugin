@@ -77,6 +77,9 @@ function findLatestSession(cwd) {
   return latest;
 }
 
+// 파일별 파싱 결과 캐시 — mtime이 같으면 재파싱 생략
+const _linesCache = new Map(); // fullPath → { mtime, lines }
+
 /** Collect all JSONL lines for the given cwd (or all projects if no cwd) */
 async function readAllLines(cwd) {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
@@ -89,19 +92,29 @@ async function readAllLines(cwd) {
     try { files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
     for (const file of files) {
       const fullPath = path.join(projDir, file);
-      const fileMtime = fs.statSync(fullPath).mtimeMs;
+      let fileMtime;
+      try { fileMtime = fs.statSync(fullPath).mtimeMs; } catch { continue; }
+
+      const cached = _linesCache.get(fullPath);
+      if (cached && cached.mtime === fileMtime) {
+        result.push(...cached.lines);
+        continue;
+      }
+
+      const lines = [];
       try {
         const raw = await fs.promises.readFile(fullPath, 'utf8');
-        const lines = raw.split('\n').filter(Boolean);
-        for (const line of lines) {
+        for (const line of raw.split('\n').filter(Boolean)) {
           try {
             const obj = JSON.parse(line);
             if (!obj.message?.usage) continue;
             const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : fileMtime;
-            result.push({ ts, usage: obj.message.usage, model: obj.message.model || 'claude-sonnet-4' });
+            lines.push({ ts, usage: obj.message.usage, model: obj.message.model || 'claude-sonnet-4' });
           } catch {}
         }
       } catch {}
+      _linesCache.set(fullPath, { mtime: fileMtime, lines });
+      result.push(...lines);
     }
   }
   return result;
@@ -147,7 +160,7 @@ export async function readTokenHistory(cwd) {
 
     if (ts >= h12) {
       const hoursAgo = (now - ts) / (60 * 60 * 1000);
-      const idx = Math.min(11, Math.floor(12 - hoursAgo));
+      const idx = Math.min(11, Math.max(0, 11 - Math.floor(hoursAgo)));
       if (idx >= 0) buckets[idx] += out;
     }
   }
