@@ -24,7 +24,8 @@
   },
   "scripts": {
     "hud": "tsx tui/hud.tsx",
-    "start": "node bin/start.mjs"
+    "start": "node bin/start.mjs",
+    "test": "node scripts/test/ext-info.test.mjs"
   },
   "files": [
     "bin",
