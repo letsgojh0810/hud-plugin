@@ -4,7 +4,7 @@
  * Run: npm run hud  (from hud-plugin root)
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { render, Box, Text, useStdout, useInput } from 'ink';
+import { render, Box, Text, useStdout, useInput, measureElement } from 'ink';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, basename } from 'path';
 import fs from 'fs';
@@ -336,7 +336,7 @@ function Bar({ ratio, width, color, C }: { ratio: number; width: number; color: 
 
 function Section({ title, children, C, accent }: { title: string; children: React.ReactNode; C: typeof DARK; accent?: string }) {
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1} marginBottom={0}>
+    <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1} marginBottom={0} flexShrink={0}>
       <Text color={C.dimmer} bold>▸ <Text color={C.text}>{title}</Text></Text>
       <Box flexDirection="column" marginTop={1}>{children}</Box>
     </Box>
@@ -360,7 +360,7 @@ function TokensTab({ usage, history, rateLimits, termWidth, currentActivity, gre
     w.inputTokens + w.outputTokens + w.cacheReadTokens + w.cacheWriteTokens;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       {/* Buddy greeting */}
       {greeting && (
         <Box paddingX={1} paddingTop={1} flexDirection="column">
@@ -679,7 +679,7 @@ function GitTab({ git, C, termWidth, branchMode, branchList, branchCursor }: any
   const diffMaxLen = Math.max(8, Math.min(16, termWidth - 20));
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       {/* Branch switcher overlay */}
       {branchMode && (
         <Box flexDirection="column" borderStyle="single" borderColor={C.brand} paddingX={1} marginBottom={1}>
@@ -773,15 +773,16 @@ function GitTab({ git, C, termWidth, branchMode, branchList, branchCursor }: any
 }
 
 // ── Tab 4: TIMELINE ────────────────────────────────────────────────────────
-const TIMELINE_VISIBLE = 20;
+// each entry takes 2 rows (text + gap); box chrome ≈ 5 rows
+const timelineVisible = (contentH: number) => Math.max(3, Math.floor((contentH - 5) / 2));
 
-function TimelineTab({ timeline, timelineScroll, C }: any) {
+function TimelineTab({ timeline, timelineScroll, visibleCount, C }: any) {
   const entries = timeline as TimelineEntry[];
-  const visible = entries.slice(timelineScroll, timelineScroll + TIMELINE_VISIBLE);
+  const visible = entries.slice(timelineScroll, timelineScroll + visibleCount);
   return (
     <Box flexDirection="column" borderStyle="single" borderColor={C.border} paddingX={1}>
       <Text color={C.dimmer} bold>▸ <Text color={C.text}>SESSION HISTORY</Text>
-        {entries.length > 0 && <Text color={C.dimmer}>  {timelineScroll + 1}–{Math.min(timelineScroll + TIMELINE_VISIBLE, entries.length)} / {entries.length}</Text>}
+        {entries.length > 0 && <Text color={C.dimmer}>  {timelineScroll + 1}–{Math.min(timelineScroll + visibleCount, entries.length)} / {entries.length}</Text>}
         {entries.length > 0 && <Text color={C.dimmer}>  [x] clear</Text>}
       </Text>
       <Box flexDirection="column" marginTop={1}>
@@ -792,7 +793,7 @@ function TimelineTab({ timeline, timelineScroll, C }: any) {
             <Text color={C.text}>{entry.text}</Text>
           </Box>
         ))}
-        {entries.length > TIMELINE_VISIBLE && (
+        {entries.length > visibleCount && (
           <Text color={C.dimmer}>  [j/k] scroll</Text>
         )}
       </Box>
@@ -816,7 +817,7 @@ function ExtTab({ ext, C }: any) {
   const hookTop = Object.entries(loaded?.hooks ?? {}).sort((a: any, b: any) => b[1] - a[1]).slice(0, 4);
   const L = (s: string) => <Text color={C.dimmer}>{('  ' + s).padEnd(14)}</Text>;
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       <Section title="PLUGINS" C={C}>
         <Text color={C.dimmer}>  {'STATE'.padEnd(6)}{'NAME'.padEnd(19)}{'VERSION'.padEnd(10)}{'SKILLS'.padStart(7)}{'AGENTS'.padStart(8)}{'CMDS'.padStart(6)}{'HOOKS'.padStart(7)}{'CALLS 7d'.padStart(10)}</Text>
         {plugins.map((p: any) => (
@@ -860,6 +861,13 @@ function App() {
   const [tab,      setTab]        = useState(0);            // 0=TOKENS 1=PROJECT 2=GIT
   const [accent,   setAccent]     = useState(3);            // 0=blue 1=red 2=amber 3=emerald 4=pink
   const [scrollY,  setScrollY]    = useState(0);
+  const innerRef = useRef<any>(null);
+  const [contentRows, setContentRows] = useState(0);
+  const maxScroll = Math.max(0, contentRows - Math.max(4, termHeight - 7));
+  // measure the real content height after each render so scrolling stops exactly at the end
+  useEffect(() => {
+    if (innerRef.current) setContentRows(measureElement(innerRef.current).height);
+  });
   const [tick,     setTick]       = useState(0);
   const [updatedAt, setUpdatedAt] = useState(Date.now());
 
@@ -1081,9 +1089,9 @@ function App() {
         const flat = project?.dirTree ? flattenTree(project.dirTree, 0, treeExpanded) : [];
         setTreeCursor(c => Math.min(c + 1, flat.length - 1));
       } else if (tab === 3) {
-        setTimelineScroll(s => Math.min(s + 1, Math.max(0, timeline.length - 20)));
+        setTimelineScroll(s => Math.min(s + 1, Math.max(0, timeline.length - timelineVisible(Math.max(4, termHeight - 7)))));
       } else {
-        setScrollY(s => Math.min(s + 1, tab === 4 ? 60 : 20));
+        setScrollY(s => Math.min(s + 1, maxScroll));
       }
     }
     if (input === 'k' || input === 'ㅏ' || key.upArrow) {
@@ -1210,12 +1218,14 @@ function App() {
                 <Text color={C.brand} bold>{SPIN[spinFrame % SPIN.length]} scanning project…</Text>
               </Box>
             ) : (
-              <Box flexDirection="column" height={contentH} marginTop={-scrollY}>
+              <Box flexDirection="column" height={contentH} marginTop={-Math.min(scrollY, maxScroll)}>
+               <Box ref={innerRef} flexDirection="column" flexShrink={0}>
                 {tab === 0 && <TokensTab   usage={usage} history={history} rateLimits={rateLimits} termWidth={termWidth} currentActivity={currentActivity} greeting={greeting} C={C} />}
                 {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} contentH={contentH - 1} git={git} C={C} />}
                 {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
-                {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
+                {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} visibleCount={timelineVisible(contentH)} C={C} />}
                 {tab === 4 && <ExtTab ext={ext} C={C} />}
+               </Box>
               </Box>
             )}
           </Box>
