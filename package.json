@@ -25,7 +25,7 @@
   "scripts": {
     "hud": "tsx tui/hud.tsx",
     "start": "node bin/start.mjs",
-    "test": "node scripts/test/ext-info.test.mjs"
+    "test": "node scripts/test/ext-info.test.mjs && node scripts/test/token-reader.test.mjs"
   },
   "files": [
     "bin",

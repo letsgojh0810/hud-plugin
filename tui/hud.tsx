@@ -16,6 +16,7 @@ const execFileAsync = promisify(execFileCb);
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const { readTokenUsage, readTokenHistory } = await import(pathToFileURL(join(__dir, '../scripts/lib/token-reader.mjs')).href);
+const { tailFile } = await import(pathToFileURL(join(__dir, '../scripts/lib/jsonl-tail.mjs')).href);
 const { readExtensions } = await import(pathToFileURL(join(__dir, '../scripts/lib/ext-info.mjs')).href);
 const { readGitInfo } = await import(pathToFileURL(join(__dir, '../scripts/lib/git-info.mjs')).href);
 const { getUsage, getUsageSync } = await import(pathToFileURL(join(__dir, '../scripts/lib/usage-api.mjs')).href);
@@ -251,8 +252,8 @@ type TimelineEntry = {
   text: string;
 };
 
-// 파일별 타임라인 파싱 캐시 — mtime이 같으면 재파싱 생략
-const _timelineCache = new Map<string, { mtime: number; entries: (TimelineEntry & { ts: number })[] }>();
+// 파일별 타임라인 증분 파싱 캐시 — 새로 붙은 바이트만 파싱
+const _timelineCache = new Map<string, any>();
 
 async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   const projectsDir = join(os.homedir(), '.claude', 'projects');
@@ -278,45 +279,35 @@ async function readSessionTimeline(cwd: string): Promise<TimelineEntry[]> {
   const entries: (TimelineEntry & { ts: number })[] = [];
 
   for (const filePath of allFiles) {
-    let fileMtime: number;
-    try { fileMtime = fs.statSync(filePath).mtimeMs; } catch { continue; }
-
-    const cached = _timelineCache.get(filePath);
-    if (cached && cached.mtime === fileMtime) {
-      entries.push(...cached.entries);
-      continue;
-    }
-
-    const fileEntries: (TimelineEntry & { ts: number })[] = [];
     try {
-      const lines = (await fs.promises.readFile(filePath, 'utf-8')).split('\n').filter(Boolean);
-      for (const line of lines) {
+      const c = tailFile(_timelineCache, filePath, () => ({ entries: [] as (TimelineEntry & { ts: number })[] }), (c: any, line: string) => {
         try {
           const obj = JSON.parse(line);
-          if (obj.type !== 'user') continue;
-          if (obj.isSidechain) continue;
+          if (obj.type !== 'user') return;
+          if (obj.isSidechain) return;
           const content = obj.message?.content;
           if (Array.isArray(content)) {
-            if (content.some((b: any) => b.type === 'tool_result')) continue;
-            if (!content.some((b: any) => b.type === 'text')) continue;
+            if (content.some((b: any) => b.type === 'tool_result')) return;
+            if (!content.some((b: any) => b.type === 'text')) return;
           }
           const textBlock = Array.isArray(content)
             ? content.find((b: any) => b.type === 'text')
             : null;
           const text: string = textBlock?.text ?? (typeof content === 'string' ? content : '');
-          if (!text.trim()) continue;
-          if (text.trimStart().startsWith('<')) continue;
+          if (!text.trim()) return;
+          if (text.trimStart().startsWith('<')) return;
 
           const tsStr: string = obj.timestamp ?? '';
           const tsNum = tsStr ? new Date(tsStr).getTime() : 0;
           const time = tsStr ? new Date(tsStr).toTimeString().slice(0, 5) : '';
 
-          fileEntries.push({ ts: tsNum, time, text: text.replace(/\n/g, ' ').slice(0, 80) });
+          c.entries.push({ ts: tsNum, time, text: text.replace(/\n/g, ' ').slice(0, 80) });
         } catch {}
-      }
+      });
+      // only the newest 50 overall are ever shown, so keep at most 50 per file
+      if (c.entries.length > 50) c.entries = c.entries.sort((a: any, b: any) => b.ts - a.ts).slice(0, 50);
+      for (const e of c.entries) entries.push(e);
     } catch {}
-    _timelineCache.set(filePath, { mtime: fileMtime, entries: fileEntries });
-    entries.push(...fileEntries);
   }
 
   entries.sort((a, b) => b.ts - a.ts);

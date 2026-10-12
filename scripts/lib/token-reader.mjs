@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { tailFile } from './jsonl-tail.mjs';
 
 const CONTEXT_WINDOWS = {
   'claude-opus-4': 200000,
@@ -77,14 +78,17 @@ export function findLatestSession(cwd) {
   return latest;
 }
 
-// 파일별 파싱 결과 캐시 — mtime이 같으면 재파싱 생략
-const _linesCache = new Map(); // fullPath → { mtime, lines }
+const WEEK = 7 * 24 * 60 * 60 * 1000;
 
-/** Collect all JSONL lines for the given cwd (or all projects if no cwd) */
+// 파일별 증분 파싱 캐시 — 새로 붙은 바이트만 파싱. 7일보다 오래된 줄은 어떤 집계에도 안 쓰이므로 버림
+const _linesCache = new Map(); // fullPath → { size, rest, lines }
+
+/** Collect usage lines (last 7d) for the given cwd (or all projects if no cwd) */
 async function readAllLines(cwd) {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return [];
   const targetDir = cwd ? cwdToProjectDir(cwd) : null;
+  const since = Date.now() - WEEK;
   const result = [];
   for (const proj of fs.readdirSync(projectsDir).filter(p => !targetDir || p === targetDir)) {
     const projDir = path.join(projectsDir, proj);
@@ -92,29 +96,20 @@ async function readAllLines(cwd) {
     try { files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl')); } catch { continue; }
     for (const file of files) {
       const fullPath = path.join(projDir, file);
-      let fileMtime;
-      try { fileMtime = fs.statSync(fullPath).mtimeMs; } catch { continue; }
-
-      const cached = _linesCache.get(fullPath);
-      if (cached && cached.mtime === fileMtime) {
-        result.push(...cached.lines);
-        continue;
-      }
-
-      const lines = [];
       try {
-        const raw = await fs.promises.readFile(fullPath, 'utf8');
-        for (const line of raw.split('\n').filter(Boolean)) {
+        const fileMtime = fs.statSync(fullPath).mtimeMs;
+        if (fileMtime < since) { _linesCache.delete(fullPath); continue; }
+        const c = tailFile(_linesCache, fullPath, () => ({ lines: [] }), (c, line) => {
           try {
             const obj = JSON.parse(line);
-            if (!obj.message?.usage) continue;
+            if (!obj.message?.usage) return;
             const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : fileMtime;
-            lines.push({ ts, usage: obj.message.usage, model: obj.message.model || 'claude-sonnet-4' });
+            if (ts < since) return;
+            c.lines.push({ ts, usage: obj.message.usage, model: obj.message.model || 'claude-sonnet-4' });
           } catch {}
-        }
+        });
+        for (const l of c.lines) result.push(l);
       } catch {}
-      _linesCache.set(fullPath, { mtime: fileMtime, lines });
-      result.push(...lines);
     }
   }
   return result;
@@ -172,39 +167,39 @@ export async function readTokenHistory(cwd) {
   return { last5h: acc5h, lastWeek: accWk, today: accToday, hourlyBuckets: buckets };
 }
 
+const _usageCache = new Map(); // sessionFile → { size, rest, model, out, inp, cr, cw, lastUsage }
+
 export async function readTokenUsage(cwd) {
   const sessionFile = findLatestSession(cwd);
   if (!sessionFile) {
     return empty();
   }
 
-  let model = 'claude-sonnet-4';
-  // For cost: sum all turns' output + input (billed per turn)
-  let totalOutputTokens = 0;
-  let totalInputTokens = 0;
-  let totalCacheReadTokens = 0;
-  let totalCacheWriteTokens = 0;
-  // For context window: use the LAST turn's snapshot (what's in context right now)
-  let lastUsage = null;
-
-  const raw = await fs.promises.readFile(sessionFile, 'utf8');
-  const lines = raw.split('\n').filter(Boolean);
-  for (const line of lines) {
+  // running totals per file; only appended bytes are parsed on each call
+  const s = tailFile(_usageCache, sessionFile, () => ({
+    model: 'claude-sonnet-4',
+    // For cost: sum all turns' output + input (billed per turn)
+    out: 0, inp: 0, cr: 0, cw: 0,
+    // For context window: use the LAST turn's snapshot (what's in context right now)
+    lastUsage: null,
+  }), (s, line) => {
     try {
       const obj = JSON.parse(line);
-      if (obj.message?.model) model = obj.message.model;
+      if (obj.message?.model) s.model = obj.message.model;
 
       const usage = obj.message?.usage;
-      if (!usage) continue;
+      if (!usage) return;
 
       // Accumulate output tokens (main cost driver, each turn is new output)
-      totalOutputTokens     += usage.output_tokens || 0;
-      totalInputTokens      += usage.input_tokens  || 0;
-      totalCacheReadTokens  += usage.cache_read_input_tokens || 0;
-      totalCacheWriteTokens += usage.cache_creation_input_tokens || 0;
-      lastUsage = usage;
+      s.out += usage.output_tokens || 0;
+      s.inp += usage.input_tokens  || 0;
+      s.cr  += usage.cache_read_input_tokens || 0;
+      s.cw  += usage.cache_creation_input_tokens || 0;
+      s.lastUsage = usage;
     } catch {}
-  }
+  });
+  const { model, lastUsage } = s;
+  const totalOutputTokens = s.out, totalInputTokens = s.inp, totalCacheReadTokens = s.cr, totalCacheWriteTokens = s.cw;
 
   if (!lastUsage) return empty();
 
