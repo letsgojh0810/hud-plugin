@@ -16,6 +16,7 @@ const execFileAsync = promisify(execFileCb);
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const { readTokenUsage, readTokenHistory } = await import(pathToFileURL(join(__dir, '../scripts/lib/token-reader.mjs')).href);
+const { readExtensions } = await import(pathToFileURL(join(__dir, '../scripts/lib/ext-info.mjs')).href);
 const { readGitInfo } = await import(pathToFileURL(join(__dir, '../scripts/lib/git-info.mjs')).href);
 const { getUsage, getUsageSync } = await import(pathToFileURL(join(__dir, '../scripts/lib/usage-api.mjs')).href);
 
@@ -26,6 +27,10 @@ process.on('SIGINT', () => { process.stdout.write('\x1b[?1049l'); process.exit(0
 process.on('SIGTERM', () => { process.stdout.write('\x1b[?1049l'); process.exit(0); });
 
 const SESSION_START = Date.now();
+
+// Tab ids (used by `tab ===` checks) in display / key order: 1=TOKENS 2=TOOL 3=PROJECT 4=GIT 5=TIMELINE
+const TAB_NAMES = ['TOKENS', 'PROJECT', 'GIT', 'TIMELINE', 'TOOL'];
+const TAB_ORDER = [0, 4, 1, 2, 3];
 
 // ── Themes ─────────────────────────────────────────────────────────────────
 // Base is always dark. Only accent colors cycle with `d`.
@@ -795,6 +800,58 @@ function TimelineTab({ timeline, timelineScroll, C }: any) {
   );
 }
 
+function ExtTab({ ext, C }: any) {
+  if (!ext) return <Text color={C.dimmer}>  loading…</Text>;
+  const { plugins, loaded, skills, agents, mcp, agentLog } = ext;
+  // usage list: name · call count · time since last use
+  const topRows = (rows: any[], n = 5) => rows.length === 0
+    ? <Text color={C.dimmer}>  no calls in the last 7 days</Text>
+    : rows.slice(0, n).map((r: any) => (
+        <Text key={r.name}>
+          <Text color={C.text}>  {r.name.padEnd(34).slice(0, 34)}</Text>
+          <Text color={C.brand} bold>{(r.count + (r.count === 1 ? ' call' : ' calls')).padEnd(10)}</Text>
+          <Text color={C.dimmer}>last used {fmtSince(Date.now() - r.last)}</Text>
+        </Text>
+      ));
+  const hookTop = Object.entries(loaded?.hooks ?? {}).sort((a: any, b: any) => b[1] - a[1]).slice(0, 4);
+  const L = (s: string) => <Text color={C.dimmer}>{('  ' + s).padEnd(14)}</Text>;
+  return (
+    <Box flexDirection="column">
+      <Section title="PLUGINS" C={C}>
+        <Text color={C.dimmer}>  {'STATE'.padEnd(6)}{'NAME'.padEnd(19)}{'VERSION'.padEnd(10)}{'SKILLS'.padStart(7)}{'AGENTS'.padStart(8)}{'CMDS'.padStart(6)}{'HOOKS'.padStart(7)}{'CALLS 7d'.padStart(10)}</Text>
+        {plugins.map((p: any) => (
+          <Text key={p.key}>
+            <Text color={p.enabled ? C.green : C.red}>  {(p.enabled ? '● on' : '○ off').padEnd(6)}</Text>
+            <Text color={p.enabled ? C.text : C.dimmer} bold={p.enabled}>{p.name.padEnd(19).slice(0, 19)}</Text>
+            <Text color={C.dimmer}>{p.version.slice(0, 9).padEnd(10)}{String(p.skills).padStart(7)}{String(p.agents).padStart(8)}{String(p.commands).padStart(6)}</Text>
+            <Text color={p.hooks ? C.green : C.dimmer}>{(p.hooks ? '✓' : '·').padStart(7)}</Text>
+            <Text color={p.calls > 0 ? C.brand : C.dimmer} bold={p.calls > 0}>{String(p.calls).padStart(10)}</Text>
+          </Text>
+        ))}
+      </Section>
+      <Section title="LOADED IN LAST SESSION" C={C}>
+        {!loaded ? <Text color={C.dimmer}>  no session found</Text> : <>
+          <Text>{L('Skills')}<Text color={C.text} bold>{loaded.skills.length}</Text><Text color={C.dimmer}>   Agents </Text><Text color={C.text} bold>{loaded.agents.length}</Text></Text>
+          <Text>{L('MCP servers')}<Text color={C.text}>{loaded.mcp.join(', ') || 'none'}</Text></Text>
+          {loaded.instructions.map((f: any, i: number) => (
+            <Text key={f.path}>{L(i === 0 ? 'CLAUDE.md' : '')}<Text color={C.green}>✓ </Text><Text color={C.text}>{f.path.replace(os.homedir(), '~')}</Text><Text color={C.dimmer}> ({f.type})</Text></Text>
+          ))}
+          <Text>{L('Hooks fired')}<Text color={C.text}>{hookTop.map(([k, v]: any) => `${k} ${v}`).join('  ·  ') || 'none'}</Text></Text>
+        </>}
+      </Section>
+      <Section title="SKILLS USED · last 7 days" C={C}>{topRows(skills)}</Section>
+      <Section title="AGENTS USED · last 7 days" C={C}>{topRows(agents)}</Section>
+      <Section title="MCP USED · last 7 days" C={C}>{topRows(mcp, 3)}</Section>
+      <Section title="RECENT AGENT CALLS" C={C}>
+        {agentLog.length === 0 ? <Text color={C.dimmer}>  no agent calls in the last 7 days</Text> : agentLog.slice(0, 8).map((e: any, i: number) => (
+          <Text key={i}><Text color={C.dimmer}>  {fmtSince(Date.now() - e.ts).padEnd(10)}</Text><Text color={C.purple}>{e.name.slice(0, 26).padEnd(28)}</Text><Text color={C.text}>{e.desc.slice(0, 40)}</Text></Text>
+        ))}
+      </Section>
+      <Text color={C.dimmer}>  * this project only. Slash-command skills and calls made inside subagents are not counted.</Text>
+    </Box>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────
 function App() {
   const { stdout } = useStdout();
@@ -848,6 +905,7 @@ function App() {
   const [timelineScroll,   setTimelineScroll]   = useState(0);
   const [currentActivity,  setCurrentActivity]  = useState<string>('');
   const [greeting, setGreeting] = useState<{ line1: string; line2: string } | null>(null);
+  const [ext, setExt] = useState<any>(null);
 
 
   const refresh = useCallback(() => {
@@ -855,6 +913,7 @@ function App() {
     readTokenHistory(cwd).then(setHistory).catch(() => {});
     setUpdatedAt(Date.now());
     readGitInfo(cwd).then(setGit).catch(() => {});
+    readExtensions(cwd).then(setExt).catch(() => {});
     getUsage().then(setRateLimits).catch(() => {});
     readSessionTimeline(cwd).then(entries => {
       setTimeline(entries);
@@ -869,6 +928,7 @@ function App() {
   useEffect(() => { refreshRef.current = refresh; }, [refresh]);
 
   useEffect(() => {
+    readExtensions(cwd).then(setExt).catch(() => {});
     // Initial token data loads (async)
     readTokenUsage(cwd).then(setUsage).catch(() => {});
     readTokenHistory(cwd).then(setHistory).catch(() => {});
@@ -996,13 +1056,10 @@ function App() {
       process.exit(0);
     }
 
-    if (input === '1') { setTab(0); setScrollY(0); }
-    if (input === '2') { setTab(1); setScrollY(0); }
-    if (input === '3') { setTab(2); setScrollY(0); }
-    if (input === '4') { setTab(3); setScrollY(0); }
+    if (/^[1-5]$/.test(input)) { setTab(TAB_ORDER[Number(input) - 1]); setScrollY(0); }
     if (input === 'd' || input === 'ㅇ') setAccent(a => (a + 1) % ACCENTS.length);
 
-    // x = clear session history (tab 4 only)
+    // x = clear session history (TIMELINE tab only)
     if ((input === 'x' || input === 'ㅌ') && tab === 3) {
       setTimeline([]);
       setTimelineScroll(0);
@@ -1026,7 +1083,7 @@ function App() {
       } else if (tab === 3) {
         setTimelineScroll(s => Math.min(s + 1, Math.max(0, timeline.length - 20)));
       } else {
-        setScrollY(s => Math.min(s + 1, 20));
+        setScrollY(s => Math.min(s + 1, tab === 4 ? 60 : 20));
       }
     }
     if (input === 'k' || input === 'ㅏ' || key.upArrow) {
@@ -1082,7 +1139,6 @@ function App() {
     }
   });
 
-  const TAB_NAMES = ['TOKENS', 'PROJECT', 'GIT', 'TIMELINE'];
   const since = fmtSince(Date.now() - updatedAt);
   const uptime = fmtSince(SESSION_START - Date.now() + (Date.now() - SESSION_START));  // forces tick dep
   void tick;
@@ -1111,7 +1167,7 @@ function App() {
       <Box height={3} borderStyle="single" borderColor={ctxPct > 0.85 ? (blinkOn ? C.red : C.border) : ctxPct > 0.65 ? C.yellow : C.brand} paddingX={1} justifyContent="space-between">
         <Box>
           <Text color={C.brand} bold>◆ HUD</Text>
-          {TAB_NAMES.map((name, i) => (
+          {TAB_ORDER.map((i) => { const name = TAB_NAMES[i]; return (
             <React.Fragment key={i}>
               <Text color={C.border}>  │  </Text>
               <Text color={tab === i ? C.brand : C.dimmer} bold={tab === i}>
@@ -1119,7 +1175,7 @@ function App() {
               </Text>
               <Text color={tab === i ? C.text : C.dimmer} bold={tab === i}>{name}</Text>
             </React.Fragment>
-          ))}
+          ); })}
         </Box>
         <Box>
           <Text color={C.border}>  │  </Text>
@@ -1137,7 +1193,7 @@ function App() {
               <Box flexDirection="column" borderStyle="round" borderColor={C.brand} paddingX={2} paddingY={1}>
                 <Text color={C.brand} bold>  Keyboard Shortcuts</Text>
                 <Text> </Text>
-                <Text><Text color={C.dim}>  1 / 2 / 3 / 4    </Text><Text color={C.text}>switch tabs</Text></Text>
+                <Text><Text color={C.dim}>  1-5              </Text><Text color={C.text}>switch tabs</Text></Text>
                 <Text><Text color={C.dim}>  j / k            </Text><Text color={C.text}>scroll / tree move</Text></Text>
                 <Text><Text color={C.dim}>  → / Enter        </Text><Text color={C.text}>expand dir / open file</Text></Text>
                 <Text><Text color={C.dim}>  ← / Esc          </Text><Text color={C.text}>collapse / close</Text></Text>
@@ -1159,6 +1215,7 @@ function App() {
                 {tab === 1 && <ProjectTab  info={project} treeCursor={treeCursor} treeExpanded={treeExpanded} selectedFile={selectedFile} fileLines={fileLines} fileScroll={fileScroll} termWidth={termWidth} contentH={contentH - 1} git={git} C={C} />}
                 {tab === 2 && <GitTab      git={git} termWidth={termWidth} branchMode={branchMode} branchList={branchList} branchCursor={branchCursor} C={C} />}
                 {tab === 3 && <TimelineTab timeline={timeline} timelineScroll={timelineScroll} C={C} />}
+                {tab === 4 && <ExtTab ext={ext} C={C} />}
               </Box>
             )}
           </Box>
@@ -1169,7 +1226,7 @@ function App() {
       <Box height={1} justifyContent="space-between" paddingX={1}>
         <Box>
           <Text color={C.green}>● </Text>
-          <Text color={C.dimmer}>[1/2/3/4] tabs  </Text>
+          <Text color={C.dimmer}>[1-5] tabs  </Text>
           <Text color={tab === 1 ? C.brand : C.dimmer}>[j/k] {tab === 1 ? 'tree' : 'scroll'}  </Text>
           <Text color={tab === 1 ? C.brand : C.dimmer}>{tab === 1 ? (selectedFile ? '[esc] close  ' : '[↵/→←] open  ') : ''}</Text>
           {tab === 2 && !branchMode && <Text color={C.brand}>[b] branch  </Text>}

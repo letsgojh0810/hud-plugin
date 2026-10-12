@@ -53,7 +53,16 @@ tmux split-window -h "npx claude-code-hud"
 
 <img src="./demo.gif" width="700" alt="token tab demo">
 
-**2 PROJECT 탭 — 인터랙티브 파일 브라우저**
+**2 TOOL 탭 — 내가 쓰는 플러그인 / skill / agent 한눈에 보기**
+- **PLUGINS** — 설치된 플러그인 표 (켜짐/꺼짐, 버전, SKILLS·AGENTS·CMDS 개수, 훅 유무, 최근 7일 호출 수). 호출이 많은 순으로 정렬
+- **LOADED IN LAST SESSION** — 마지막 세션에서 Claude가 실제로 쓸 수 있었던 skill·agent 수, MCP 서버, CLAUDE.md 파일, 실행된 훅
+- **SKILLS / AGENTS / MCP USED** — 최근 7일 호출 횟수와 마지막 사용 시각
+- **RECENT AGENT CALLS** — 최근 서브에이전트 호출 기록 (타입, 설명)
+- 플러그인 활성 여부는 `~/.claude/settings.json`과 프로젝트의 `.claude/settings(.local).json`을 합쳐서 판단합니다
+- 현재 프로젝트 세션 기준이며, 슬래시 커맨드로 실행한 skill과 서브에이전트 내부 호출은 집계되지 않습니다
+- 읽기 전용입니다. 플러그인을 켜고 끄는 기능은 없습니다 (`/plugin` 사용)
+
+**3 PROJECT 탭 — 인터랙티브 파일 브라우저**
 - 디렉토리 트리 (펼치기/접기)
 - Git 변경 파일 색상 표시 — 수정(노란색 M) / 추가(초록 A) / 삭제(빨강 D)
 - 파일 선택 시 소스 코드 뷰어 (split 패널)
@@ -69,14 +78,14 @@ tmux split-window -h "npx claude-code-hud"
   ▶ scripts/         6f         │    …  [j/k] scroll  [esc] close
 ```
 
-**3 GIT 탭**
+**4 GIT 탭**
 - 현재 브랜치, ahead/behind 카운트
 - 변경 파일 목록 (MOD / ADD / DEL) + 실제 +/- 라인 수
 - 파일별 diff 시각화
 - 최근 커밋 히스토리
 - **브랜치 전환** — `b` 키로 로컬 브랜치 목록 표시, 선택해서 바로 checkout
 
-**4 TIMELINE 탭**
+**5 TIMELINE 탭**
 - 현재 세션에서 사용자가 입력한 메시지 히스토리
 - 시간 + 내용 표시, 10개씩 j/k 스크롤
 
@@ -84,7 +93,7 @@ tmux split-window -h "npx claude-code-hud"
 
 | 키 | 동작 |
 |----|------|
-| `1` `2` `3` `4` | 탭 전환 |
+| `1` `2` `3` `4` `5` | 탭 전환 |
 | `j` / `k` | 스크롤 / 트리 이동 |
 | `→` / `Enter` | 디렉토리 펼치기 / 파일 열기 |
 | `←` / `Esc` | 접기 / 소스 뷰어 닫기 |
@@ -168,7 +177,16 @@ tmux split-window -h "npx claude-code-hud"
 
 <img src="./demo.gif" width="700" alt="token tab demo">
 
-**2 PROJECT tab — interactive file browser**
+**2 TOOL tab — see which plugins, skills and agents you actually use**
+- **PLUGINS** — table of installed plugins (on/off, version, SKILLS / AGENTS / CMDS counts, hooks, calls in the last 7 days), sorted by usage
+- **LOADED IN LAST SESSION** — what Claude really had available: skill and agent counts, MCP servers, CLAUDE.md files, hooks that fired
+- **SKILLS / AGENTS / MCP USED** — call counts for the last 7 days with time since last use
+- **RECENT AGENT CALLS** — latest subagent calls (type, description)
+- Enabled state merges `~/.claude/settings.json` with the project's `.claude/settings(.local).json`
+- Based on this project's sessions; skills run as slash commands and calls made inside subagents are not counted
+- Read-only. Use `/plugin` to enable or disable plugins
+
+**3 PROJECT tab — interactive file browser**
 - Navigable directory tree with expand/collapse
 - Git-changed files highlighted — modified (yellow M) / added (green A) / deleted (red D)
 - Source file viewer in a split panel
@@ -184,14 +202,14 @@ tmux split-window -h "npx claude-code-hud"
   ▶ scripts/         6f         │    …  [j/k] scroll  [esc] close
 ```
 
-**3 GIT tab**
+**4 GIT tab**
 - Branch status, ahead/behind remote
 - Changed file list (MOD / ADD / DEL) with real `+N -N` diff counts
 - Per-file diff visualization
 - Recent commit history
 - **Branch switcher** — press `b` to list local branches and checkout instantly
 
-**4 TIMELINE tab**
+**5 TIMELINE tab**
 - User message history from the current Claude Code session
 - Timestamped entries, 10 per page, j/k to scroll
 
@@ -199,7 +217,7 @@ tmux split-window -h "npx claude-code-hud"
 
 | Key | Action |
 |-----|--------|
-| `1` `2` `3` `4` | Switch tabs |
+| `1` `2` `3` `4` `5` | Switch tabs |
 | `j` / `k` | Scroll / move tree cursor |
 | `→` / `Enter` | Expand dir / open file |
 | `←` / `Esc` | Collapse / close source viewer |
@@ -231,6 +249,7 @@ Run `claude` once to authenticate — credentials are saved to `~/.claude/.crede
 
 - **Token data**: Watches `~/.claude/projects/*/sessions/*.jsonl` with chokidar — updates instantly on each Claude response
 - **Timeline**: Reads the same JSONL files, filters `type === "user"` entries for message history
+- **TOOL tab**: Reads `~/.claude/plugins/installed_plugins.json` and the settings files for the plugin list, and parses `tool_use` blocks (Skill / Agent / `mcp__*`) plus `skill_listing`, `agent_listing_delta`, `instructions` and `hook_success` attachments from the session JSONL. Only newly appended bytes are parsed on each refresh, and files older than 7 days are skipped
 - **Usage window**: Calls `api.anthropic.com/api/oauth/usage` using local Claude credentials — cached 5 min
 - **Git**: Polls every 3 seconds
 - **Project scan**: One-time fast-glob scan on startup, `r` to rescan

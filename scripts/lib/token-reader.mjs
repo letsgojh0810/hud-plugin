@@ -43,7 +43,7 @@ function cwdToProjectDir(cwd) {
 }
 
 /** Find the most recently modified .jsonl session file for the given cwd */
-function findLatestSession(cwd) {
+export function findLatestSession(cwd) {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(projectsDir)) return null;
 
